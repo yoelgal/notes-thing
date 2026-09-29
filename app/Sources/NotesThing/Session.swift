@@ -25,15 +25,32 @@ final class Session {
   /// Recording time: frozen while paused, so it lines up with the audio file.
   var t: TimeInterval { recordedBefore + (runStart.map { Date().timeIntervalSince($0) } ?? 0) }
 
-  private let asr = Task { () throws -> AsrManager in
-    let models = try await AsrModels.downloadAndLoad(version: .v2)
-    let manager = AsrManager()
-    try await manager.loadModels(models)
-    return manager
-  }
+  private var asr: Task<AsrManager, Error>!
 
   init() {
-    Task { _ = try? await asr.value; modelReady = true }
+    loadModel()
+  }
+
+  /// Loads the model picked in Settings (downloading it on first run). A session that's
+  /// already stopped keeps the model it started transcribing with.
+  func loadModel() {
+    let m = Models.shared.selected
+    modelReady = false
+    let task = Self.load(m, progress: Models.shared.reporter(for: m))
+    asr = task
+    Task {
+      _ = try? await task.value
+      Models.shared.finished(m)
+      if asr == task { modelReady = true }
+    }
+  }
+
+  nonisolated static func load(_ m: TranscriptionModel, progress: ProgressHandler? = nil) -> Task<AsrManager, Error> {
+    Task {
+      let manager = AsrManager()
+      try await manager.loadModels(try await AsrModels.downloadAndLoad(version: m.version, progressHandler: progress))
+      return manager
+    }
   }
 
   // MARK: Controls
@@ -159,12 +176,8 @@ final class Session {
     dec.dateDecodingStrategy = .iso8601
     let text = (try? String(contentsOf: dir.appendingPathComponent("events.jsonl"), encoding: .utf8)) ?? ""
     let events = text.split(separator: "\n").compactMap { try? dec.decode(Event.self, from: Data($0.utf8)) }
-    let asr = Task { () throws -> AsrManager in
-      let manager = AsrManager()
-      try await manager.loadModels(try await AsrModels.downloadAndLoad(version: .v2))
-      return manager
-    }
-    await finish(dir: dir, id: dir.lastPathComponent, events: events, asr: asr)
+    let model = UserDefaults.standard.string(forKey: "model").flatMap(TranscriptionModel.init) ?? .parakeetV2
+    await finish(dir: dir, id: dir.lastPathComponent, events: events, asr: load(model))
   }
 
   private nonisolated static func finish(dir: URL, id: String, events: [Event], asr: Task<AsrManager, Error>) async {

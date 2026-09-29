@@ -51,7 +51,7 @@ struct Menu: View {
     case .transcribing:
       Text("Transcribing…")
     }
-    if !session.modelReady { Text("Loading Parakeet model…") }
+    if !session.modelReady { Text("Loading \(Models.shared.selected.displayName)…") }
     Divider()
     if let id = session.lastID {
       Button("Copy /notes \(id)") { session.copyNotesCommand() }
@@ -86,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_: Notification) {
     Self.shared = self
     _ = Updater.shared
+    Models.shared.onSelect = { [session] in session.loadModel() }
     overlay = OverlayWindow(CapsuleView(session: session))
     overlay?.orderFrontRegardless()
     HotKeys.bind(.toggle, Prefs.shared[.toggle]) { [session] in session.toggle() }

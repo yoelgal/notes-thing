@@ -212,13 +212,10 @@ struct SettingsView: View {
             }
           }
         }
-        LabeledContent("Speech model") {
-          if session.modelReady {
-            Label("Parakeet TDT v2 ready", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-          } else {
-            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Loading…") }
-          }
-        }
+      }
+
+      Section("Transcription model") {
+        ModelSection(session: session)
       }
 
       Section("Sessions") {
