@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 5.10
 import PackageDescription
 
 let package = Package(
@@ -10,8 +10,7 @@ let package = Package(
   targets: [
     .executableTarget(
       name: "NotesThing",
-      dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
-      swiftSettings: [.swiftLanguageMode(.v5)]
+      dependencies: [.product(name: "FluidAudio", package: "FluidAudio")]
     ),
   ]
 )
