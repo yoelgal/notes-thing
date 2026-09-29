@@ -22,6 +22,9 @@ final class Session {
   private var recordedBefore: TimeInterval = 0
   private var runStart: Date?
 
+  /// The session being recorded or transcribed, which History leaves out.
+  var activeID: String? { state == .idle ? nil : id }
+
   /// Recording time: frozen while paused, so it lines up with the audio file.
   var t: TimeInterval { recordedBefore + (runStart.map { Date().timeIntervalSince($0) } ?? 0) }
 

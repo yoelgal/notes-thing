@@ -49,7 +49,8 @@ Quit from the menu, then drag **Notes Thing** from Applications to the Trash. Yo
 ## Use
 - `⌃⌥P`: start a session / pause / resume
 - `⌃⌥N`: note field (Enter saves, Esc cancels). A note is timed from its first keystroke.
-- Change either shortcut in **Settings…** (`⌘,` from the menu).
+- Change either shortcut, or the transcription model, in **Settings…** (`⌘,` from the menu).
+- **History…** lists every session: play the audio, open the transcript, copy `/notes <id>`, or transcribe one you quit mid-lecture.
 - Menu bar → **Stop & Transcribe**: writes `~/Sessions/<id>/session.md` and copies `/notes <id>` to the clipboard.
 
 Each session folder: `events.jsonl` (written live), `audio.caf` while recording → `audio.m4a` after, `session.md`.

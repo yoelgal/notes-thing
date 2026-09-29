@@ -68,7 +68,8 @@ struct Menu: View {
     } else {
       Button("Check for Updates…") { updater.checkInteractively() }
     }
-    Button("Settings…") { AppDelegate.shared?.settings.show() }.keyboardShortcut(",")
+    Button("History…") { AppDelegate.shared?.window.show(.history) }
+    Button("Settings…") { AppDelegate.shared?.window.show(.settings) }.keyboardShortcut(",")
     Divider()
     Button("Quit") { NSApp.terminate(nil) }.keyboardShortcut("q")
   }
@@ -80,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   let session = Session()
   lazy var notePanel = NotePanel(session: session)
-  lazy var settings = SettingsWindow(session: session)
+  lazy var window = AppWindow(session: session)
   private var overlay: OverlayWindow?
 
   func applicationDidFinishLaunching(_: Notification) {
