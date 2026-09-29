@@ -9,6 +9,11 @@ struct NotesThingApp: App {
   init() {
     if CommandLine.arguments.contains("--selfcheck") {
       Transcript.selfCheck()
+      let s = Shortcut(keyCode: 45, modifiers: [.command, .control, .shift, .function], key: "N")
+      precondition(s.display == "⌃⇧⌘N" && s.carbonModifiers == UInt32(cmdKey | controlKey | shiftKey), "shortcut")
+      let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .shift, timestamp: 0, windowNumber: 0,
+                               context: nil, characters: "N", charactersIgnoringModifiers: "N", isARepeat: false, keyCode: 45)!
+      precondition(Shortcut(e) == nil, "shift-only shortcuts must be rejected")
       exit(0)
     }
     if let i = CommandLine.arguments.firstIndex(of: "--finish"), i + 1 < CommandLine.arguments.count {
@@ -26,30 +31,22 @@ struct NotesThingApp: App {
     MenuBarExtra {
       Menu(session: delegate.session)
     } label: {
-      Image(systemName: icon)
-    }
-  }
-
-  private var icon: String {
-    switch delegate.session.state {
-    case .idle: "waveform"
-    case .recording: "record.circle"
-    case .paused: "pause.circle"
-    case .transcribing: "ellipsis.circle"
+      Image(nsImage: MenuIcon.image(delegate.session.state))
     }
   }
 }
 
 struct Menu: View {
   var session: Session
+  private var keys: Prefs { .shared }
 
   var body: some View {
     switch session.state {
     case .idle:
-      Button("New Session  ⌃⌥P") { session.toggle() }
+      Button("New Session  \(keys[.toggle].display)") { session.toggle() }
     case .recording, .paused:
-      Button(session.state == .paused ? "Resume  ⌃⌥P" : "Pause  ⌃⌥P") { session.toggle() }
-      Button("Add Note  ⌃⌥N") { AppDelegate.shared?.notePanel.show() }
+      Button("\(session.state == .paused ? "Resume" : "Pause")  \(keys[.toggle].display)") { session.toggle() }
+      Button("Add Note  \(keys[.note].display)") { AppDelegate.shared?.notePanel.show() }
       Button("Stop & Transcribe") { session.stop() }
     case .transcribing:
       Text("Transcribing…")
@@ -63,6 +60,15 @@ struct Menu: View {
       try? FileManager.default.createDirectory(at: Session.root, withIntermediateDirectories: true)
       NSWorkspace.shared.open(Session.root)
     }
+    let updater = Updater.shared
+    if updater.installing {
+      Text("Updating…")
+    } else if let v = updater.available {
+      Button("Update to \(v)…") { updater.install() }
+    } else {
+      Button("Check for Updates…") { updater.checkInteractively() }
+    }
+    Button("Settings…") { AppDelegate.shared?.settings.show() }.keyboardShortcut(",")
     Divider()
     Button("Quit") { NSApp.terminate(nil) }.keyboardShortcut("q")
   }
@@ -74,44 +80,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   let session = Session()
   lazy var notePanel = NotePanel(session: session)
+  lazy var settings = SettingsWindow(session: session)
   private var overlay: OverlayWindow?
 
   func applicationDidFinishLaunching(_: Notification) {
     Self.shared = self
+    _ = Updater.shared
     overlay = OverlayWindow(CapsuleView(session: session))
     overlay?.orderFrontRegardless()
-    HotKeys.register(kVK_ANSI_P) { [session] in session.toggle() }
-    HotKeys.register(kVK_ANSI_N) { [weak self] in self?.notePanel.show() }
+    HotKeys.bind(.toggle, Prefs.shared[.toggle]) { [session] in session.toggle() }
+    HotKeys.bind(.note, Prefs.shared[.note]) { [weak self] in self?.notePanel.show() }
   }
 
   func applicationWillTerminate(_: Notification) {
     session.stopRecorderForQuit()
-  }
-}
-
-/// Global ⌃⌥<key> shortcuts via Carbon, which needs no Accessibility permission.
-@MainActor
-enum HotKeys {
-  private static var handlers: [UInt32: () -> Void] = [:]
-  private static var refs: [EventHotKeyRef?] = []
-
-  static func register(_ keyCode: Int, _ action: @escaping () -> Void) {
-    if handlers.isEmpty {
-      var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-      InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
-        var id = EventHotKeyID()
-        GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
-                          nil, MemoryLayout<EventHotKeyID>.size, nil, &id)
-        MainActor.assumeIsolated { HotKeys.handlers[id.id]?() }
-        return noErr
-      }, 1, &spec, nil, nil)
-    }
-    let id = UInt32(handlers.count + 1)
-    handlers[id] = action
-    var ref: EventHotKeyRef?
-    RegisterEventHotKey(UInt32(keyCode), UInt32(controlKey | optionKey),
-                        EventHotKeyID(signature: OSType(0x4E_54_48_4B), id: id), // "NTHK"
-                        GetApplicationEventTarget(), 0, &ref)
-    refs.append(ref)
   }
 }

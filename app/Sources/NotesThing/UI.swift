@@ -109,6 +109,50 @@ final class OverlayWindow: NSPanel {
   }
 }
 
+// MARK: Menu bar icon
+
+/// The app icon's mark: the recording capsule above three lines of notes.
+/// The capsule fills while recording and is an outline otherwise; paused dims everything,
+/// transcribing turns the lines into dots.
+@MainActor
+enum MenuIcon {
+  private static var cache: [Session.State: NSImage] = [:]
+
+  static func image(_ state: Session.State) -> NSImage {
+    if let img = cache[state] { return img }
+    let img = NSImage(size: NSSize(width: 19, height: 18), flipped: false) { _ in
+      draw(state, NSColor.black)
+      return true
+    }
+    img.isTemplate = true
+    cache[state] = img
+    return img
+  }
+
+  /// Same geometry as the icon() function in site/index.html.
+  nonisolated static func draw(_ state: Session.State, _ color: NSColor) {
+    func pill(_ r: NSRect) -> NSBezierPath { let c = min(r.width, r.height) / 2; return NSBezierPath(roundedRect: r, xRadius: c, yRadius: c) }
+    let ink = state == .paused ? color.withAlphaComponent(0.4) : color
+    ink.setFill(); ink.setStroke()
+    if state == .recording {
+      pill(NSRect(x: 4, y: 13.5, width: 11, height: 4.5)).fill()
+    } else {
+      let cap = pill(NSRect(x: 4.65, y: 14.15, width: 9.7, height: 3.2))
+      cap.lineWidth = 1.3
+      cap.stroke()
+    }
+    for (y, w) in [(9.5, 15.0), (5.25, 15.0), (1.0, 10.0)] {
+      if state == .transcribing {
+        for i in 0 ..< Int((w / 3).rounded()) {
+          NSBezierPath(ovalIn: NSRect(x: 2 + Double(i) * 3, y: y, width: 2.5, height: 2.5)).fill()
+        }
+      } else {
+        pill(NSRect(x: 2, y: y, width: w, height: 2.5)).fill()
+      }
+    }
+  }
+}
+
 // MARK: Note field
 
 /// A Spotlight-style panel: takes keystrokes without activating the app, so focus
@@ -138,6 +182,15 @@ final class NotePanel: NSPanel {
     setFrame(NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - 110, width: size.width, height: size.height),
              display: true)
     makeKeyAndOrderFront(nil)
+    // SwiftUI drops focus requests made before the window is key, so focus the field once it is.
+    DispatchQueue.main.async { [weak self] in
+      guard let self, let field = self.contentView.flatMap(Self.textField) else { return }
+      self.makeFirstResponder(field)
+    }
+  }
+
+  private static func textField(in view: NSView) -> NSTextField? {
+    view as? NSTextField ?? view.subviews.lazy.compactMap(textField).first
   }
 
   override func resignKey() {
@@ -152,19 +205,16 @@ struct NoteField: View {
 
   @State private var text = ""
   @State private var anchor: (t: TimeInterval, paused: Bool)?
-  @FocusState private var focused: Bool
 
   var body: some View {
     TextField(session.state == .paused ? "Note (paused)" : "Note", text: $text)
       .textFieldStyle(.plain)
       .font(.system(size: 15))
       .foregroundStyle(.white)
-      .focused($focused)
       .padding(.horizontal, 16)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .background(Capsule().fill(Color.black.opacity(0.85)))
       .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
-      .onAppear { focused = true }
       .onChange(of: text) { old, new in
         // Anchor to the first keystroke, not Enter: you start typing right after the thing you heard.
         if old.isEmpty, !new.isEmpty, anchor == nil { anchor = (session.t, session.state == .paused) }

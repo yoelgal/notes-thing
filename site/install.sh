@@ -1,5 +1,5 @@
 #!/bin/bash
-# Notes Thing installer: curl -fsSL https://raw.githubusercontent.com/yoelgal/notes-thing/main/install.sh | bash
+# Notes Thing installer: curl -fsSL https://notesthing.yoelgal.com/install.sh | bash
 #
 # Why a script? The app isn't notarized (no paid Apple Developer account). Files downloaded
 # by a browser get a quarantine flag that makes macOS block unnotarized apps. Files fetched
@@ -44,7 +44,7 @@ xattr -dr com.apple.quarantine "$DEST/$NAME" 2>/dev/null || true
 step "Opening Notes Thing"
 open "$DEST/$NAME"
 
-printf "\n%s✓ Installed.%s Look for the waveform in your menu bar. ⌃⌥P starts a session.\n" "$green" "$reset"
+printf "\n%s✓ Installed.%s Look for the icon in your menu bar. ⌃⌥P starts a session.\n" "$green" "$reset"
 printf "%s  First run downloads the speech model (~650 MB).\n" "$dim"
 printf "  Update: run this command again.\n"
 printf "  Uninstall: quit the app and drag it from %s to the Trash. Your sessions stay in ~/Sessions.%s\n" "$DEST" "$reset"

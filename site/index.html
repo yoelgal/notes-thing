@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes Thing: lecture notes that land in the transcript</title>
+<meta name="description" content="A free menu bar recorder for Mac. Jot notes during a lecture and get a transcript with each note placed at the second you wrote it. Transcribes on your Mac.">
+<meta name="theme-color" content="#0C0D10">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://notesthing.yoelgal.com/">
+<meta property="og:title" content="Notes Thing: lecture notes that land in the transcript">
+<meta property="og:description" content="Record from the menu bar, jot notes as you listen, get a transcript with every note at the second you wrote it. On-device, free.">
+<meta property="og:image" content="https://notesthing.yoelgal.com/assets/demo.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="/assets/favicon.png">
+<link rel="apple-touch-icon" href="/assets/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0C0D10; --panel:#131418; --ink:#EDEEF0; --dim:#9CA0A8; --faint:#62666E;
+  --line:rgba(255,255,255,.09); --rec:#FF453A; --blue:#5E8BFF;
+  --sans:Geist,ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --serif:Newsreader,"New York",Georgia,serif;
+  --cell:72px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:radial-gradient(1000px 560px at 50% -160px,rgba(255,69,58,.14),transparent 70%),var(--bg);background-repeat:no-repeat;color:var(--ink);font:400 16px/1.5 var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column;align-items:center}
+a{color:inherit}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+kbd{font:600 .8em var(--sans);padding:1px 6px;border:1px solid rgba(255,255,255,.14);border-bottom-width:2px;border-radius:5px;background:#1C1E23;color:var(--ink);white-space:nowrap}
+
+main{width:min(860px,100% - 24px);margin:clamp(20px,6vh,64px) 0 0}
+
+/* One object, every row a cell on the same hairline grid (after Hex). */
+.sheet{background:var(--panel);border:1px solid rgba(255,255,255,.1);border-radius:18px;overflow:hidden;box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 50px 100px -30px rgba(0,0,0,.75)}
+.row{display:flex;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.cell{display:flex;align-items:center;border-right:1px solid var(--line)}
+.cell:last-child{border-right:0}
+
+.head{height:72px}
+.head .logo{width:var(--cell);justify-content:center}
+.head .logo img{width:42px;height:42px}
+.head h1{flex:1;min-width:0;padding:0 20px;font-size:24px;font-weight:600;letter-spacing:-.035em;white-space:nowrap}
+.head h1 small{font-size:14.5px;font-weight:400;color:var(--dim);letter-spacing:-.01em;margin-left:10px}
+.head .state{padding:0 18px;gap:9px;font:500 12.5px var(--mono);color:var(--dim);font-variant-numeric:tabular-nums;min-width:178px}
+.head .state b{color:var(--ink);font-weight:600}
+.dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--rec);box-shadow:0 0 10px var(--rec)}
+[data-s=paused] .dot{background:var(--faint);box-shadow:none}
+[data-s=transcribing] .dot,[data-s=done] .dot{background:var(--blue);box-shadow:0 0 10px var(--blue)}
+.head .gh{width:var(--cell);justify-content:center;color:var(--dim);transition:color .15s}
+.head .gh:hover{color:var(--ink)}
+.head .gh svg{width:20px;height:20px;fill:currentColor}
+
+/* The little Mac. Everything inside scales with its width (cqw). */
+.screen{position:relative;width:100%;aspect-ratio:16/10;container-type:inline-size;overflow:hidden;cursor:text;
+  background:radial-gradient(120% 90% at 20% 0%,#2a2724 0%,#1a1816 55%,#0f0e0d 100%)}
+.mb{position:absolute;inset:0 0 auto;height:3.6cqw;display:flex;align-items:center;gap:2.1cqw;padding:0 1.8cqw;background:rgba(255,250,240,.07);backdrop-filter:blur(20px);font-size:1.45cqw;color:rgba(255,255,255,.9);z-index:6}
+.mb b{font-weight:700}
+.mb .r{margin-left:auto;display:flex;align-items:center;gap:1.8cqw}
+.mb svg{height:1.9cqw;width:auto;fill:#fff;overflow:visible}
+.mb .apple{width:1.4cqw;height:1.7cqw;fill:#fff}
+
+/* The app's overlay capsule (Hex's indicator), top-centre */
+.capsule{position:absolute;top:4.6cqw;left:50%;translate:-50% 0;height:2cqw;width:7cqw;border-radius:1cqw;z-index:7;
+  background:#7a1d18;box-shadow:inset 0 0 .5cqw var(--rec),0 0 calc(var(--lvl,0)*2cqw) rgba(255,69,58,.8);transition:width .3s cubic-bezier(.3,1.4,.5,1),background .3s,box-shadow .08s}
+.capsule::after{content:"";position:absolute;inset:.7cqw 1cqw;border-radius:.4cqw;background:rgba(255,255,255,calc(var(--lvl,0)*.7));filter:blur(1px)}
+.capsule.paused{width:2cqw;background:#3d3d3d;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
+.capsule.paused::after,.capsule.busy::after{opacity:0}
+.capsule.busy{width:2cqw;background:#1b2f66;box-shadow:inset 0 0 .5cqw var(--blue);animation:busy 1s ease-in-out infinite}
+@keyframes busy{50%{opacity:.5}}
+
+/* Windows */
+.win{position:absolute;border-radius:1.1cqw;overflow:hidden;box-shadow:0 3cqw 6cqw rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.35)}
+.tb{height:3.3cqw;display:flex;align-items:center;gap:.75cqw;padding:0 1.3cqw;font-size:1.25cqw}
+.tb i{width:1.15cqw;height:1.15cqw;border-radius:50%;background:#ff5f57}
+.tb i+i{background:#febc2e}.tb i+i+i{background:#28c840}
+.tb span{flex:1;text-align:center;margin-right:4cqw}
+.kn{left:8cqw;right:8cqw;top:8.4cqw;bottom:7cqw;background:#fff;color:#16181D;transition:filter .5s}
+.kn .tb{background:#ECEBE8;border-bottom:1px solid #DCDAD5;color:#555}
+.slide{padding:4.2cqw 5.5cqw}
+.slide .k{font:500 1.2cqw var(--mono);color:#8a8378;letter-spacing:.15cqw}
+.slide h3{font:500 4.4cqw/1.08 var(--serif);letter-spacing:-.08cqw;margin-top:1.6cqw}
+.slide .f{font:italic 400 3.3cqw var(--serif);margin-top:2.6cqw}
+.slide ul{list-style:none;margin-top:2.6cqw;font-size:1.75cqw;color:#3b3e45;line-height:1.7}
+.slide ul li::before{content:"— ";color:#9a958c}
+.screen[data-s=paused] .kn{filter:brightness(.55) saturate(.6)}
+
+/* What the lecturer is saying, as subtitles */
+.sub{position:absolute;left:12cqw;right:12cqw;bottom:2.2cqw;z-index:5;text-align:center;font-size:max(12px,1.85cqw);line-height:1.35;color:#fff}
+.sub span{background:rgba(0,0,0,.75);padding:.25cqw .8cqw;border-radius:.5cqw;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.sub:empty{display:none}
+.sub .who{color:rgba(255,255,255,.55)}
+
+/* The note field: the app's dark pill, focusable for real */
+.pill{position:absolute;top:8.2cqw;left:50%;width:52cqw;height:5cqw;translate:-50% 0;z-index:8;display:flex;align-items:center;padding:0 2cqw;border-radius:2.5cqw;
+  background:rgba(12,12,14,.9);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.14);box-shadow:0 2cqw 4cqw rgba(0,0,0,.5);
+  opacity:0;transform:translateY(-1cqw) scale(.97);pointer-events:none;transition:opacity .18s,transform .25s cubic-bezier(.3,1.4,.5,1)}
+.pill.on{opacity:1;transform:none;pointer-events:auto}
+.pill input{flex:1;min-width:0;background:none;border:0;outline:0;color:#fff;font:400 max(14px,2cqw) var(--sans);caret-color:#fff}
+.pill input::placeholder{color:rgba(255,255,255,.45)}
+.stamp{position:absolute;top:14cqw;left:50%;translate:-50% 0;z-index:8;display:flex;align-items:center;gap:.8cqw;padding:.5cqw 1.1cqw;border-radius:.8cqw;background:#F2EEE6;color:#17140F;font:500 max(11px,1.3cqw) var(--mono);white-space:nowrap;opacity:0;transform:translateY(-.6cqw);transition:opacity .2s,transform .25s}
+.stamp.on{opacity:1;transform:none}
+.stamp i{width:.9cqw;height:.9cqw;border-radius:50%;background:var(--rec)}
+.saved{position:absolute;top:8.2cqw;left:50%;translate:-50% 0;z-index:8;height:5cqw;display:flex;align-items:center;gap:1cqw;padding:0 2cqw;border-radius:2.5cqw;background:rgba(12,12,14,.9);border:1px solid rgba(255,255,255,.14);font-size:max(12px,1.6cqw);color:#fff;white-space:nowrap;opacity:0;transition:opacity .25s;pointer-events:none}
+.saved.on{opacity:1}
+.saved b{color:var(--rec);font:600 max(11px,1.4cqw) var(--mono)}
+
+/* The finished transcript */
+.doc{left:12cqw;right:12cqw;top:6.4cqw;bottom:7.6cqw;background:#17181C;color:var(--ink);z-index:9;opacity:0;transform:translateY(4cqw) scale(.97);transition:opacity .45s,transform .6s cubic-bezier(.2,.9,.25,1.1);pointer-events:none;display:flex;flex-direction:column}
+.doc.on{opacity:1;transform:none}
+.doc .tb{background:#1F2025;border-bottom:1px solid rgba(255,255,255,.07);color:var(--dim);font-family:var(--mono);font-size:1.15cqw}
+.doc .body{flex:1;overflow:hidden;-webkit-mask-image:linear-gradient(transparent,#000 14%);mask-image:linear-gradient(transparent,#000 14%);padding:2cqw 3cqw;display:flex;flex-direction:column;justify-content:flex-end}
+.doc .fm{font:1.2cqw var(--mono);color:var(--faint);padding-bottom:1.3cqw;border-bottom:1px dashed rgba(255,255,255,.12);margin-bottom:.8cqw;white-space:pre}
+.dl{display:flex;gap:1.6cqw;font-size:1.45cqw;line-height:1.45;padding:.3cqw 0;color:#C9CBD0}
+.dl .ts{flex:none;width:5.2cqw;font:1.3cqw/1.75 var(--mono);color:var(--faint)}
+.dl.note{margin:.35cqw 0;padding:.75cqw 1.4cqw;background:rgba(255,69,58,.1);border-left:.35cqw solid var(--rec);border-radius:.3cqw .8cqw .8cqw .3cqw;color:#fff;font-weight:600}
+.dl.note .ts{color:var(--rec);font-weight:600;width:auto;min-width:5.2cqw}
+.dl.pause{font:1.25cqw var(--mono);color:var(--faint)}
+.toast{position:absolute;left:50%;bottom:2cqw;translate:-50% 0;z-index:10;display:flex;align-items:center;gap:1cqw;padding:.9cqw 1.6cqw;border-radius:1cqw;background:rgba(30,31,36,.95);border:1px solid rgba(255,255,255,.12);font-size:max(11px,1.4cqw);white-space:nowrap;opacity:0;transform:translateY(1cqw);transition:opacity .3s,transform .3s}
+.toast.on{opacity:1;transform:none}
+.toast code{font:max(11px,1.3cqw) var(--mono);background:rgba(255,255,255,.08);padding:.3cqw .8cqw;border-radius:.5cqw}
+.toast i{width:.9cqw;height:.9cqw;border-radius:50%;background:var(--rec)}
+
+/* Keys + install */
+.keys{height:78px}
+.key{width:var(--cell);justify-content:center;font:500 20px var(--sans);color:var(--dim);position:relative;isolation:isolate}
+.key::after{content:"";position:absolute;inset:12px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:linear-gradient(#202227,#191B1F);box-shadow:0 3px 0 #08090B,0 1px 0 rgba(255,255,255,.06) inset;transition:transform .07s,box-shadow .07s,background .07s;z-index:-1}
+.key.down{color:#fff}
+.key.down::after{transform:translateY(3px);background:#7a1d18;box-shadow:0 0 22px rgba(255,69,58,.55),inset 0 0 8px var(--rec)}
+.install{flex:1;min-width:0;flex-direction:column;align-items:stretch;justify-content:center;padding:0 20px;gap:3px;text-align:left;transition:background .15s}
+.install:hover{background:rgba(255,255,255,.035)}
+.install .l1{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font:600 15px var(--sans);letter-spacing:-.01em}
+.install .l1 span:last-child{font:500 12.5px var(--sans);color:var(--dim)}
+.install code{font:12.5px var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.hint{margin-top:14px;font-size:14px;color:var(--dim)}
+.below{margin-top:6px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 20px;font-size:13.5px;color:var(--dim)}
+.below code{font:12.5px var(--mono);color:var(--ink)}
+.below a{text-underline-offset:3px;text-decoration-color:rgba(255,255,255,.25)}
+
+.more{width:min(860px,100% - 24px);margin:clamp(64px,12vh,120px) 0 0}
+.more h2{font-size:clamp(24px,3.2vw,32px);font-weight:600;letter-spacing:-.035em;line-height:1.1}
+.video{margin-top:20px;border:1px solid rgba(255,255,255,.1);border-radius:14px;overflow:hidden;background:#000;aspect-ratio:16/9}
+.video video{display:block;width:100%;height:100%;object-fit:cover}
+.facts{margin-top:28px;display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border:1px solid rgba(255,255,255,.1);border-radius:14px;overflow:hidden}
+.facts div{padding:18px 20px 20px;background:var(--panel)}
+.facts h3{font-size:15.5px;font-weight:600;letter-spacing:-.01em}
+.facts p{margin-top:4px;font-size:14.5px;color:var(--dim)}
+.facts code{font:13px var(--mono);color:var(--ink)}
+footer{width:min(860px,100% - 24px);padding:48px 0 40px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 20px;font-size:13px;color:var(--faint)}
+footer a{text-underline-offset:3px}
+
+@media (max-width:760px){
+  .head h1 small{display:none}
+}
+@media (max-width:560px){
+  :root{--cell:54px}
+  .head{height:60px}
+  .head h1{font-size:20px;padding:0 14px}
+  .head .state{min-width:0;padding:0 12px}
+  .head .state #stateText{display:none}
+  .keys .key:nth-child(-n+2){display:none}
+  .install .l1 span:last-child{display:none}
+  .facts{grid-template-columns:1fr}
+  .mb > span{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<main>
+  <div class="sheet">
+    <div class="row head" id="head" data-s="recording">
+      <div class="cell logo"><img src="/assets/icon.png" alt=""></div>
+      <h1 class="cell">Notes Thing <small>lecture notes that know when you wrote them</small></h1>
+      <div class="cell state" aria-hidden="true"><span class="dot"></span><span id="stateText"><b>Recording</b> 14:00</span></div>
+      <a class="cell gh" href="https://github.com/yoelgal/notes-thing" aria-label="Source on GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+    </div>
+
+    <div class="screen" id="screen" data-s="recording" role="img" aria-label="Demo: a lecture plays on a Mac while notes are added with a shortcut, then the transcript appears with each note where it was written">
+      <div class="mb" aria-hidden="true">
+        <svg class="apple" viewBox="0 0 14 17"><path d="M11.6 9c0-2 1.7-3 1.8-3.1-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.8-3.2.8-.7 0-1.7-.8-2.8-.7C3 4.4 1.7 5.3 1 6.6c-1.5 2.6-.4 6.4 1.1 8.5.7 1 1.5 2.2 2.6 2.1 1-.04 1.4-.7 2.7-.7s1.6.7 2.7.7c1.1 0 1.8-1 2.5-2.1.8-1.2 1.1-2.3 1.1-2.4 0 0-2.2-.8-2.2-3.3zM9.5 2.9C10.1 2.2 10.5 1.2 10.4.2c-.8 0-1.9.6-2.5 1.3-.5.6-1 1.6-.9 2.6.9.1 1.9-.5 2.5-1.2z"/></svg>
+        <b>Keynote</b><span>File</span><span>Edit</span><span>View</span><span>Play</span>
+        <div class="r"><svg viewBox="0 0 19 18" id="mbicon"></svg><span>Tue 29 Sep</span><span>10:18</span></div>
+      </div>
+      <div class="capsule" id="capsule"></div>
+
+      <div class="win kn">
+        <div class="tb"><i></i><i></i><i></i><span>Lecture 7: Scattering.key</span></div>
+        <div class="slide" id="slide"></div>
+      </div>
+      <div class="sub" id="sub"></div>
+
+      <form class="pill" id="noteform" autocomplete="off">
+        <label class="sr-only" for="note">Add your own note</label>
+        <input id="note" maxlength="70" placeholder="Note">
+      </form>
+      <div class="stamp" id="stamp"><i></i><span id="stampT">14:00</span> first keystroke</div>
+      <div class="saved" id="saved">Note saved at <b id="savedT">14:00</b></div>
+
+      <div class="win doc" id="doc">
+        <div class="tb"><i></i><i></i><i></i><span>~/Sessions/20260929-1004/session.md</span></div>
+        <div class="body"><div class="fm">id: 20260929-1004   date: 2026-09-29   start: 10:04</div><div id="md"></div></div>
+      </div>
+      <div class="toast" id="toast"><i></i>Copied to clipboard <code>/notes 20260929-1004</code></div>
+    </div>
+
+    <div class="row keys">
+      <div class="cell key" id="kCtrl" aria-hidden="true">⌃</div>
+      <div class="cell key" id="kOpt" aria-hidden="true">⌥</div>
+      <div class="cell key" id="kN" aria-hidden="true">N</div>
+      <button class="cell install" id="install" data-copy="curl -fsSL https://notesthing.yoelgal.com/install.sh | bash">
+        <span class="l1"><span id="installLabel">Copy the install command</span><span>then paste it into Terminal</span></span>
+        <code>curl -fsSL https://notesthing.yoelgal.com/install.sh | bash</code>
+      </button>
+    </div>
+  </div>
+
+  <p class="hint">Press <kbd>N</kbd> to add your own note. It’s timed from the first keystroke, so it lands beside what was being said, even if you finish typing later.</p>
+  <div class="below">
+    <span>Free. Transcribes on your Mac. macOS 14 or newer.</span>
+    <span>Or <code>brew install --cask yoelgal/tap/notes-thing</code>, or <a href="https://github.com/yoelgal/notes-thing/releases/latest">download the app</a>.</span>
+  </div>
+</main>
+
+<section class="more" aria-labelledby="demo-h">
+  <h2 id="demo-h">A whole session, start to finish.</h2>
+  <div class="video"><video src="/assets/demo.mp4" poster="/assets/demo.jpg" controls playsinline preload="metadata"></video></div>
+  <div class="facts">
+    <div><h3>Nothing leaves your Mac</h3><p>NVIDIA’s Parakeet model transcribes on your Mac. It downloads once (about 650 MB). No account, no upload.</p></div>
+    <div><h3>Safe if your laptop dies</h3><p>Notes hit the disk the moment you save them, and the audio records in a crash-safe format.</p></div>
+    <div><h3>Your keys</h3><p><kbd>⌃⌥P</kbd> records and pauses. <kbd>⌃⌥N</kbd> adds a note. Change either one in Settings.</p></div>
+    <div><h3>Plain Markdown</h3><p>Each lecture is a folder in <code>~/Sessions</code>. Its name is copied for you, ready to paste into your AI assistant.</p></div>
+  </div>
+</section>
+
+<footer>
+  <span>Made by <a href="https://github.com/yoelgal">Yoel Gal</a>. Updates itself from GitHub releases.</span>
+  <span>Interface adapted from <a href="https://github.com/kitlangton/Hex">Hex</a>. Transcription by <a href="https://github.com/FluidInference/FluidAudio">FluidAudio</a>.</span>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const pad = n => String(n).padStart(2, '0');
+const stamp = s => `${pad(Math.floor(s / 60))}:${pad(Math.floor(s % 60))}`;
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+$('install').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('install').dataset.copy); $('installLabel').textContent = 'Copied. Paste it into Terminal.'; }
+  catch { $('installLabel').textContent = 'Select the command below to copy it'; }
+  setTimeout(() => $('installLabel').textContent = 'Copy the install command', 2400);
+});
+
+// Menu bar icon: same geometry as the app's MenuIcon.draw (SVG y is flipped).
+const R = (x, y, w, h, extra = '') => `<rect x="${x}" y="${18 - y - h}" width="${w}" height="${h}" rx="${Math.min(w, h) / 2}"${extra}/>`;
+function icon(state) {
+  const dim = state === 'paused' ? ' opacity=".4"' : '';
+  const cap = state === 'recording' ? R(4, 13.5, 11, 4.5)
+    : R(4.65, 14.15, 9.7, 3.2, ` fill="none" stroke="#fff" stroke-width="1.3"${dim}`);
+  const lines = [[9.5, 15], [5.25, 15], [1, 10]];
+  const body = state === 'transcribing'
+    ? lines.flatMap(([y, w]) => [...Array(Math.round(w / 3))].map((_, i) => `<circle cx="${3.25 + i * 3}" cy="${18 - y - 1.25}" r="1.25"/>`)).join('')
+    : lines.map(([y, w]) => R(2, y, w, 2.5, dim)).join('');
+  $('mbicon').innerHTML = cap + body;
+}
+
+// The lecture, the slides, and the notes a slightly tired student jots.
+const T0 = 14 * 60;
+const slides = {
+  intro: { h: 'Why is the sky blue?', f: 'I ∝ 1 / λ⁴', ul: ['Rayleigh scattering', 'short wavelengths scatter most'] },
+  iceland: { h: 'A quick story', ul: ['Reykjavík, 2009', 'the luggage incident'] },
+  violet: { h: 'So why not violet?', ul: ['less violet in sunlight', 'our eyes barely see it'] },
+  sunset: { h: 'Sunsets', f: 'longer path, less blue', ul: ['blue is scattered out on the way'] },
+  hw: { h: 'For Thursday', ul: ['Chapter 9', 'Problems 1–6'] },
+};
+const script = [
+  { slide: 'intro', say: "Okay, settle down everyone. Today: why is the sky blue?" },
+  { say: "Sunlight hits the air, and short wavelengths scatter the most.", note: "short wavelength = more scatter" },
+  { say: "It goes as one over wavelength to the fourth." },
+  { say: "And this will absolutely be on the exam.", note: "ON THE EXAM", early: true },
+  { slide: 'iceland', say: "Now, a quick story about my trip to Iceland in 2009.", note: "iceland story #4 this term" },
+  { pause: "grab coffee after" },
+  { slide: 'violet', say: "Right, where was I. So why isn't the sky violet?", note: "wait, why isn't it violet??" },
+  { say: "The sun gives off less violet, and our eyes are bad at seeing it." },
+  { slide: 'sunset', say: "Sunsets are red because the light travels further through the air." },
+  { slide: 'hw', say: "Problems one to six, due Thursday.", note: "pset due thurs" },
+];
+
+const screen = $('screen'), head = $('head'), input = $('note'), pill = $('noteform');
+let t = 0, gen = 0, events = [], user = null;
+
+function setState(s, label) {
+  screen.dataset.s = head.dataset.s = s;
+  icon(s);
+  $('capsule').className = 'capsule' + (s === 'paused' ? ' paused' : s === 'transcribing' ? ' busy' : '');
+  $('capsule').style.display = s === 'done' ? 'none' : '';
+  $('stateText').innerHTML = label ?? `<b>${s === 'paused' ? 'Paused' : 'Recording'}</b> ${stamp(T0 + t)}`;
+}
+function showSlide(name) {
+  const s = slides[name];
+  $('slide').innerHTML = `<div class="k">PHYS 101 · LECTURE 7</div><h3>${s.h}</h3>${s.f ? `<div class="f">${s.f}</div>` : ''}<ul>${s.ul.map(x => `<li>${x}</li>`).join('')}</ul>`;
+}
+function press(on) { for (const k of ['kCtrl', 'kOpt', 'kN']) $(k).classList.toggle('down', on); }
+function openPill() { $('saved').classList.remove('on'); pill.classList.add('on'); }
+function closePill() { pill.classList.remove('on'); $('stamp').classList.remove('on'); input.value = ''; }
+function anchor() { $('stampT').textContent = stamp(T0 + t); $('stamp').classList.add('on'); return { at: t, paused: screen.dataset.s === 'paused' }; }
+async function saved(at) {
+  $('savedT').textContent = stamp(T0 + at); $('saved').classList.add('on');
+  await sleep(1100); $('saved').classList.remove('on');
+}
+
+async function typeNote(text, g) {
+  if (user) return;
+  press(true); await sleep(170); press(false);
+  openPill(); await sleep(220);
+  let a = null;
+  for (let i = 1; i <= text.length; i++) {
+    if (g !== gen || user) return;
+    if (i === 1) a = anchor();
+    input.value = text.slice(0, i);
+    await sleep(reduce ? 0 : 45 + Math.random() * 55);
+  }
+  await sleep(350);
+  if (g !== gen || user) return;
+  closePill();
+  events.push({ kind: 'note', t: a.at, text, paused: a.paused });
+  saved(a.at);
+}
+
+async function say(text, g) {
+  events.push({ kind: 'say', t, text });
+  const words = text.split(' ');
+  for (let i = 0; i < words.length; i++) {
+    if (g !== gen) return;
+    $('sub').innerHTML = `<span>${esc(words.slice(0, i + 1).join(' '))}</span>`;
+    t += 0.36;
+    setState('recording');
+    await sleep(reduce ? 60 : 150 + Math.random() * 120);
+  }
+}
+
+function renderMd() {
+  const rank = { pause: 0, note: 1, say: 2 }; // time stands still while paused, so ties need an order
+  const items = [...events].sort((a, b) => a.t - b.t || rank[a.kind] - rank[b.kind]);
+  $('md').innerHTML = items.map(i =>
+    i.kind === 'say' ? `<div class="dl"><span class="ts">[${stamp(T0 + i.t)}]</span><span>${esc(i.text)}</span></div>`
+    : i.kind === 'pause' ? `<div class="dl pause">--- paused 10:18–10:21 ---</div>`
+    : `<div class="dl note"><span class="ts">note [${stamp(T0 + i.t)}${i.paused ? ', paused' : ''}]</span><span>${esc(i.text)}</span></div>`).join('');
+}
+
+setInterval(() => {
+  const on = screen.dataset.s === 'recording' && !reduce;
+  $('capsule').style.setProperty('--lvl', on ? (0.25 + Math.random() * 0.75).toFixed(2) : 0);
+}, 90);
+
+async function run() {
+  const g = ++gen;
+  t = 0; events = [];
+  $('doc').classList.remove('on'); $('toast').classList.remove('on'); $('sub').innerHTML = '';
+  showSlide('intro'); setState('recording');
+  await sleep(700);
+  for (const step of script) {
+    if (g !== gen) return;
+    if (step.slide) showSlide(step.slide);
+    if (step.pause) {
+      setState('paused'); $('sub').innerHTML = '<span class="who">(break)</span>';
+      events.push({ kind: 'pause', t });
+      await sleep(900);
+      await typeNote(step.pause, g);
+      await sleep(1100);
+      continue;
+    }
+    const sentence = say(step.say, g);
+    if (step.note) {
+      await sleep(step.early ? 450 : 1100); // start typing partway through, like a real student
+      await typeNote(step.note, g);
+    }
+    await sentence;
+    await sleep(reduce ? 200 : 700);
+  }
+  while (user && g === gen) await sleep(300); // let a visitor finish their note
+  if (g !== gen) return;
+  $('sub').innerHTML = '';
+  setState('transcribing', '<b>Transcribing</b> on this Mac');
+  await sleep(2000);
+  if (g !== gen) return;
+  renderMd();
+  $('doc').classList.add('on');
+  setState('done', '<b>Done.</b> session.md');
+  await sleep(900);
+  $('toast').classList.add('on');
+  await sleep(7500);
+  if (g === gen) run();
+}
+
+// Your own notes, anchored at the first keystroke, like the app.
+function startUserNote() {
+  if ($('doc').classList.contains('on')) return;
+  press(true); setTimeout(() => press(false), 150);
+  closePill(); user = { at: null };
+  openPill(); input.focus();
+}
+input.addEventListener('input', () => {
+  if (!user) user = { at: null };
+  if (input.value && user.at === null) Object.assign(user, anchor());
+  if (!input.value) { user.at = null; $('stamp').classList.remove('on'); }
+});
+pill.addEventListener('submit', e => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (text && user?.at != null) { events.push({ kind: 'note', t: user.at, text, paused: user.paused }); saved(user.at); }
+  user = null; closePill(); input.blur(); // Return closes the note field, like the app
+});
+input.addEventListener('keydown', e => { if (e.key === 'Escape') { user = null; closePill(); input.blur(); } });
+input.addEventListener('blur', () => { if (user && !input.value) { user = null; closePill(); } });
+addEventListener('keydown', e => {
+  if (e.metaKey || (e.ctrlKey && !e.altKey) || /INPUT|TEXTAREA/.test(document.activeElement?.tagName ?? '')) return;
+  if (e.code === 'KeyN') { e.preventDefault(); startUserNote(); }
+});
+screen.addEventListener('click', e => { if (!pill.contains(e.target)) startUserNote(); });
+
+icon('recording');
+run();
+</script>
+</body>
+</html>
