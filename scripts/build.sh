@@ -6,10 +6,11 @@ cd "$(dirname "$0")/.."
 VERSION="${VERSION:-0.0.0-dev}"
 APP="dist/Notes Thing.app"
 
-swift build -c release --arch arm64 --arch x86_64
+swift build -c release --package-path app --arch arm64 --arch x86_64
 
-rm -rf dist && mkdir -p "$APP/Contents/MacOS"
-cp .build/apple/Products/Release/NotesThing "$APP/Contents/MacOS/"
+rm -rf dist && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp app/.build/apple/Products/Release/NotesThing "$APP/Contents/MacOS/"
+cp app/AppIcon.icns "$APP/Contents/Resources/"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -18,6 +19,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>Notes Thing</string>
   <key>CFBundleIdentifier</key><string>com.yoelgal.notesthing</string>
   <key>CFBundleExecutable</key><string>NotesThing</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleVersion</key><string>${VERSION}</string>
