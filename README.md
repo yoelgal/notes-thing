@@ -6,7 +6,7 @@
 
 <p align="center"><a href="https://notesthing.yoelgal.com">notesthing.yoelgal.com</a></p>
 
-<p align="center"><a href="https://notesthing.yoelgal.com/assets/demo.mp4"><img src="site/assets/demo.gif" width="720" alt="Notes Thing demo: recording a lecture, adding a note, and the transcript with the note in place"></a><br><sub>▶ <a href="https://notesthing.yoelgal.com/assets/demo.mp4">Watch the demo with sound</a></sub></p>
+<p align="center"><a href="https://notesthing.yoelgal.com/assets/demo.mp4"><img src="site/assets/demo.gif" width="720" alt="Notes Thing demo: recording a lecture, adding a note, and the transcript with the note in place"></a><br><sub>▶ <a href="https://notesthing.yoelgal.com/assets/demo.mp4">Watch the demo with sound</a> · <a href="site/assets/demo-sound-credits.txt">sound credits</a></sub></p>
 
 Transcribes on-device with Parakeet TDT v2 (via FluidAudio). UI adapted from [Hex](https://github.com/kitlangton/Hex) (MIT, see `LICENSE-Hex`).
 

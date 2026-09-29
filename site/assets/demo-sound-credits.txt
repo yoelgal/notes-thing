@@ -1,0 +1,8 @@
+Sound credits for demo.mp4
+
+Music: original score composed and synthesised for this video (no third-party music).
+
+Sound effects (CC0 / public domain):
+- Kenney "Interface Sounds" and "Impact Sounds" (kenney.nl): click_003, bong_001, impactSoft_medium_001, impactBell_heavy_000; Kenney "UI Audio": click2. License: CC0 1.0.
+- "Keyboard Soundpack #1 (typing and single keystrokes)" by unicae_games, OpenGameArt.org
+  (https://opengameart.org/content/keyboard-soundpack-1-typing-and-single-keystrokes): keypress-003/007/012/018/022/027. License: CC0 1.0.
