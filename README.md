@@ -52,8 +52,9 @@ Quit from the menu, then drag **Notes Thing** from Applications to the Trash. Yo
 - Change either shortcut, or the transcription model, in **Settings…** (`⌘,` from the menu).
 - **History…** lists every session: play the audio, open the transcript, copy `/notes <id>`, or transcribe one you quit mid-lecture.
 - Menu bar → **Stop & Transcribe**: writes `~/Sessions/<id>/session.md` and copies `/notes <id>` to the clipboard.
+- More than one voice? The transcript labels each change of speaker (**Speaker 1:**, **Speaker 2:**…). Name them with the people button in **History…**; giving two the same name merges them.
 
-Each session folder: `events.jsonl` (written live), `audio.caf` while recording → `audio.m4a` after, `session.md`.
+Each session folder: `events.jsonl` (written live), `audio.caf` while recording → `audio.m4a` after, `session.md`, and `speakers.json` (speaker names) when there's more than one voice.
 
 Quit mid-session? The audio and notes are safe on disk; rebuild the transcript with
 `"/Applications/Notes Thing.app/Contents/MacOS/NotesThing" --finish ~/Sessions/<id>`.

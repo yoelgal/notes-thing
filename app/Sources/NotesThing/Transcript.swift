@@ -15,14 +15,36 @@ struct Event: Codable {
 struct Token {
   var text: String
   var start: TimeInterval
+  /// "Speaker 1", "Speaker 2"… from diarization; nil if it didn't run.
+  var speaker: String? = nil
 }
 
 struct Sentence {
   var start: TimeInterval
   var text: String
+  var speaker: String? = nil
 }
 
 enum Transcript {
+  /// Tags each token with the diarized speaker talking at its start time. A token in a gap between
+  /// segments goes to the nearer one (a speaker's first word often starts just before their segment).
+  /// Raw cluster ids are renamed "Speaker N" in order of first appearance, so Speaker 1 talks first.
+  static func assignSpeakers(_ tokens: [Token], segments: [(start: TimeInterval, end: TimeInterval, id: String)]) -> [Token] {
+    let segs = segments.sorted { $0.start < $1.start }
+    guard !segs.isEmpty else { return tokens }
+    var names: [String: String] = [:]
+    var i = 0
+    return tokens.map { token in
+      while i + 1 < segs.count, segs[i + 1].start <= token.start { i += 1 }
+      var seg = segs[i]
+      if token.start > seg.end, i + 1 < segs.count, segs[i + 1].start - token.start < token.start - seg.end { seg = segs[i + 1] }
+      if names[seg.id] == nil { names[seg.id] = "Speaker \(names.count + 1)" }
+      var t = token
+      t.speaker = names[seg.id]
+      return t
+    }
+  }
+
   /// Groups tokens into sentences, breaking on . ? ! and at every pause so a pause marker
   /// never lands in the middle of a sentence.
   static func sentences(_ tokens: [Token], breaks: [TimeInterval]) -> [Sentence] {
@@ -31,7 +53,7 @@ enum Transcript {
     var pending = breaks.sorted()[...]
     func flush() {
       if let s = current, !s.text.trimmingCharacters(in: .whitespaces).isEmpty {
-        out.append(Sentence(start: s.start, text: s.text.trimmingCharacters(in: .whitespaces)))
+        out.append(Sentence(start: s.start, text: s.text.trimmingCharacters(in: .whitespaces), speaker: s.speaker))
       }
       current = nil
     }
@@ -42,8 +64,9 @@ enum Transcript {
       }
       // ponytail: 30 s cap on run-on sentences, the recogniser sometimes omits punctuation
       if let s = current, token.start - s.start > 30 { flush() }
+      if let s = current, s.speaker != token.speaker { flush() }
       let piece = token.text.replacingOccurrences(of: "▁", with: " ")
-      if current == nil { current = Sentence(start: token.start, text: "") }
+      if current == nil { current = Sentence(start: token.start, text: "", speaker: token.speaker) }
       current!.text += piece
       if let last = piece.trimmingCharacters(in: .whitespaces).last, ".?!".contains(last) { flush() }
     }
@@ -59,8 +82,9 @@ enum Transcript {
   }
 
   /// Renders `session.md`: sentences with notes and pause markers slotted in after the
-  /// sentence that was being spoken at their recording time.
-  static func render(id: String, events: [Event], tokens: [Token], error: String? = nil) -> String {
+  /// sentence that was being spoken at their recording time. With two or more speakers, a
+  /// `**Speaker N:**` label marks each change of speaker; `names` swaps in names from speakers.json.
+  static func render(id: String, events: [Event], tokens: [Token], names: [String: String] = [:], error: String? = nil) -> String {
     let clock = DateFormatter()
     clock.dateFormat = "HH:mm"
     let day = DateFormatter()
@@ -91,9 +115,14 @@ enum Transcript {
 
     let pauses = events.filter { $0.kind == .pause }.map(\.t)
     var queue = inserts[...] // already in time order: events are appended as they happen
+    let labelled = Set(tokens.compactMap(\.speaker)).count > 1
+    var lastSpeaker: String?
     for s in sentences(tokens, breaks: pauses) {
       while let (t, md) = queue.first, t < s.start { lines.append(md); queue.removeFirst() }
-      lines.append("[\(stamp(s.start))] \(s.text)")
+      var label = ""
+      if labelled, let sp = s.speaker, sp != lastSpeaker { label = "**\(names[sp] ?? sp):** " }
+      lastSpeaker = s.speaker
+      lines.append("[\(stamp(s.start))] \(label)\(s.text)")
     }
     lines += queue.map(\.1)
     return lines.joined(separator: "\n") + "\n"
@@ -122,6 +151,15 @@ enum Transcript {
     assert(body.contains("[00:00] Hello world.\n> **note [00:03]:** why?\n[00:04] So then\n--- paused"), body)
     assert(body.contains("---\n> **note [00:06, paused]:** later\n[00:07] next."), body)
     assert(stamp(3725) == "1:02:05")
+
+    // Speakers: raw ids renumbered by first appearance; a label only on each change.
+    let spoken = assignSpeakers(tokens, segments: [(0, 2.5, "S7"), (4.2, 5.5, "S2"), (7.5, 9, "S7")])
+    assert(spoken.map { $0.speaker! } == ["Speaker 1", "Speaker 1", "Speaker 1", "Speaker 2", "Speaker 2", "Speaker 1", "Speaker 1"])
+    let named = render(id: "x", events: events, tokens: spoken, names: ["Speaker 2": "Me"])
+    assert(named.contains("[00:00] **Speaker 1:** Hello world.\n> **note [00:03]:** why?\n[00:04] **Me:** So then"), named)
+    assert(named.contains("[00:07] **Speaker 1:** next."), named)
+    let solo = assignSpeakers(tokens, segments: [(0, 9, "S1")])
+    assert(!render(id: "x", events: events, tokens: solo).contains("**Speaker"), "one speaker: no labels")
     print("selfcheck ok")
   }
 }
