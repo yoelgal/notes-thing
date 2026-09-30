@@ -38,11 +38,21 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 
-# Ad-hoc signature: required to run on Apple Silicon. No Apple Developer account needed.
-# ponytail: macOS re-asks for mic access after each rebuild; a Developer ID signature fixes that.
-# Sparkle's helpers are re-signed ad-hoc too: it won't launch them if their team doesn't match the app's.
+# Signed with a fixed self-signed certificate, so macOS keeps the mic permission across updates
+# (an ad-hoc signature changes every build, so each update looked like a new app). No Apple account needed.
+# CI imports it into $SIGN_KEYCHAIN; locally it's in the login keychain. Without it, local builds fall back
+# to ad-hoc, but CI fails: shipping ad-hoc would reset everyone's mic permission.
+IDENTITY="Notes Thing Signing"
+KEYCHAIN_ARGS=()
+[ -n "${SIGN_KEYCHAIN:-}" ] && KEYCHAIN_ARGS=(--keychain "$SIGN_KEYCHAIN")
+if ! security find-identity -p codesigning ${SIGN_KEYCHAIN:+"$SIGN_KEYCHAIN"} | grep -q "\"$IDENTITY\""; then
+  [ -n "${CI:-}" ] && { echo "error: \"$IDENTITY\" certificate missing" >&2; exit 1; }
+  echo "warning: \"$IDENTITY\" not in keychain, signing ad-hoc"
+  IDENTITY=-
+fi
+# Sparkle's helpers get the same signature: it won't launch them if they don't match the app.
 for p in "$SPARKLE/Versions/B/Autoupdate" "$SPARKLE/Versions/B/Updater.app" "$SPARKLE" "$APP"; do
-  codesign --force --sign - "$p"
+  codesign --force --sign "$IDENTITY" ${KEYCHAIN_ARGS[@]+"${KEYCHAIN_ARGS[@]}"} "$p"
 done
 (cd dist && ditto -c -k --keepParent "Notes Thing.app" NotesThing.zip)
 echo "Built $APP ($VERSION)"
