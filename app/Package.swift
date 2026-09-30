@@ -1,11 +1,12 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.1
 import PackageDescription
 
 let package = Package(
   name: "NotesThing",
   platforms: [.macOS(.v14)],
   dependencies: [
-    .package(url: "https://github.com/FluidInference/FluidAudio", from: "0.15.5"),
+    // No NeMo text-normalization engine: it's for TTS, and its prebuilt Rust library fails to link on Xcode 26.6.
+    .package(url: "https://github.com/FluidInference/FluidAudio", from: "0.15.5", traits: []),
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.0"),
   ],
   targets: [
@@ -18,5 +19,6 @@ let package = Package(
       // scripts/build.sh puts Sparkle.framework in Contents/Frameworks.
       linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
     ),
-  ]
+  ],
+  swiftLanguageModes: [.v5]
 )
