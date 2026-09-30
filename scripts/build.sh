@@ -11,6 +11,10 @@ swift build -c release --package-path app --arch arm64 --arch x86_64
 rm -rf dist && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp app/.build/apple/Products/Release/NotesThing "$APP/Contents/MacOS/"
 cp app/AppIcon.icns "$APP/Contents/Resources/"
+# Sparkle, minus the XPC services only sandboxed apps need.
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+ditto app/.build/apple/Products/Release/Sparkle.framework "$SPARKLE"
+rm -rf "$SPARKLE/Versions/B/XPCServices" "$SPARKLE/XPCServices"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -27,13 +31,19 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSUIElement</key><true/>
   <key>LSApplicationCategoryType</key><string>public.app-category.education</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>SUFeedURL</key><string>https://github.com/yoelgal/notes-thing/releases/latest/download/appcast.xml</string>
+  <key>SUPublicEDKey</key><string>OIXJMQORA3X2MJW+sf9lDwE9vwV1tKCvIhDqkdyjruE=</string>
+  <key>SUEnableAutomaticChecks</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Records your lectures so they can be transcribed on this Mac.</string>
 </dict></plist>
 PLIST
 
 # Ad-hoc signature: required to run on Apple Silicon. No Apple Developer account needed.
 # ponytail: macOS re-asks for mic access after each rebuild; a Developer ID signature fixes that.
-codesign --force --sign - "$APP"
+# Sparkle's helpers are re-signed ad-hoc too: it won't launch them if their team doesn't match the app's.
+for p in "$SPARKLE/Versions/B/Autoupdate" "$SPARKLE/Versions/B/Updater.app" "$SPARKLE" "$APP"; do
+  codesign --force --sign - "$p"
+done
 (cd dist && ditto -c -k --keepParent "Notes Thing.app" NotesThing.zip)
 echo "Built $APP ($VERSION)"
 

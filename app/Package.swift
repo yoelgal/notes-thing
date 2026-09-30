@@ -6,11 +6,17 @@ let package = Package(
   platforms: [.macOS(.v14)],
   dependencies: [
     .package(url: "https://github.com/FluidInference/FluidAudio", from: "0.15.5"),
+    .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.0"),
   ],
   targets: [
     .executableTarget(
       name: "NotesThing",
-      dependencies: [.product(name: "FluidAudio", package: "FluidAudio")]
+      dependencies: [
+        .product(name: "FluidAudio", package: "FluidAudio"),
+        .product(name: "Sparkle", package: "Sparkle"),
+      ],
+      // scripts/build.sh puts Sparkle.framework in Contents/Frameworks.
+      linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
     ),
   ]
 )

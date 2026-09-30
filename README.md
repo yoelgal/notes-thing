@@ -40,7 +40,7 @@ scroll down, and click **Open Anyway**. You only need to do this once.
 
 ## Update
 
-Use **Check for Updates…** in the menu (it waits until your session is finished), or run the install command again.
+Notes Thing checks for updates daily and shows **Update to …** in the menu. Updates are signed with an EdDSA key (Sparkle), and one started mid-session waits until the session is transcribed. Running the install command again also works.
 
 ## Uninstall
 

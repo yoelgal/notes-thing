@@ -9,12 +9,24 @@ final class Session {
 
   static let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Sessions")
 
-  var state: State = .idle
+  var state: State = .idle {
+    didSet {
+      // Keeps a long lecture (and its transcription) going when the Mac sits idle.
+      if state == .idle {
+        if let awake { ProcessInfo.processInfo.endActivity(awake) }
+        awake = nil
+        Updater.shared.sessionEnded()
+      } else if awake == nil, UserDefaults.standard.object(forKey: "preventSleep") as? Bool ?? true {
+        awake = ProcessInfo.processInfo.beginActivity(options: .idleSystemSleepDisabled, reason: "Recording a session")
+      }
+    }
+  }
   var meter: Double = 0
   var lastID: String?
   var modelReady = false
 
-  private var recorder: AVAudioRecorder?
+  private var recorder: Recorder?
+  private var awake: NSObjectProtocol?
   private var meterTimer: Timer?
   private var dir: URL!
   private var id = ""
@@ -76,14 +88,9 @@ final class Session {
     dir = Self.root.appendingPathComponent(id)
     do {
       try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-      // PCM in CAF survives a crash (unlike m4a, which is unreadable until finalised).
-      let r = try AVAudioRecorder(url: dir.appendingPathComponent("audio.caf"), settings: [
-        AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000, AVNumberOfChannelsKey: 1,
-        AVLinearPCMBitDepthKey: 16,
-      ])
-      r.isMeteringEnabled = true
-      guard r.record() else { return alert("Couldn't start recording.") }
-      recorder = r
+      recorder = try Recorder(url: dir.appendingPathComponent("audio.caf")) { [weak self] error in
+        self?.alert("Recording stopped: \(error) The audio up to now is saved.")
+      }
     } catch { return alert("Couldn't start recording: \(error.localizedDescription)") }
     events = []
     recordedBefore = 0
@@ -93,8 +100,7 @@ final class Session {
     meterTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self, let r = self.recorder, self.state == .recording else { self?.meter = 0; return }
-        r.updateMeters()
-        self.meter = pow(10, Double(r.averagePower(forChannel: 0)) / 20)
+        self.meter = r.level
       }
     }
   }
@@ -110,7 +116,7 @@ final class Session {
 
   func resume() {
     guard state == .paused else { return }
-    recorder?.record()
+    recorder?.resume()
     runStart = Date()
     state = .recording
     log(.resume)
@@ -128,12 +134,13 @@ final class Session {
     recordedBefore = t
     runStart = nil
     log(.stop)
-    recorder?.stop()
-    recorder = nil
+    let recorder = recorder
+    self.recorder = nil
     meterTimer?.invalidate()
     state = .transcribing
     let (dir, id, events) = (dir!, id, events)
     Task {
+      await recorder?.stop()
       await Self.finish(dir: dir, id: id, events: events, asr: asr)
       lastID = id
       copyNotesCommand()
@@ -145,7 +152,7 @@ final class Session {
   func stopRecorderForQuit() {
     guard state == .recording || state == .paused else { return }
     log(.stop)
-    recorder?.stop()
+    recorder?.stopNow()
   }
 
   func copyNotesCommand() {
@@ -229,5 +236,87 @@ final class Session {
     let a = NSAlert()
     a.messageText = message
     a.runModal()
+  }
+}
+
+/// Records one mic to a file. Unlike AVAudioRecorder, AVCaptureSession can use any input
+/// without changing the system default.
+@MainActor
+final class Recorder: NSObject, AVCaptureFileOutputRecordingDelegate {
+  private let capture = AVCaptureSession()
+  private let output = AVCaptureAudioFileOutput()
+  private let failed: (String) -> Void
+  private var stopping: CheckedContinuation<Void, Never>?
+  private var done = false
+
+  /// The mic picked in Settings, or the system default if none was picked or it's unplugged.
+  static var device: AVCaptureDevice? {
+    UserDefaults.standard.string(forKey: "microphone").flatMap(AVCaptureDevice.init(uniqueID:)) ?? .default(for: .audio)
+  }
+
+  static func devices() -> [AVCaptureDevice] {
+    AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified).devices
+  }
+
+  /// `failed` is called if recording ends on its own, e.g. the mic was unplugged.
+  init(url: URL, failed: @escaping (String) -> Void) throws {
+    self.failed = failed
+    super.init()
+    guard let device = Self.device else {
+      throw NSError(domain: "NotesThing", code: 1, userInfo: [NSLocalizedDescriptionKey: "No microphone found."])
+    }
+    let input = try AVCaptureDeviceInput(device: device)
+    guard capture.canAddInput(input), capture.canAddOutput(output) else {
+      throw NSError(domain: "NotesThing", code: 2, userInfo: [NSLocalizedDescriptionKey: "\(device.localizedName) can't be recorded."])
+    }
+    capture.addInput(input)
+    capture.addOutput(output)
+    // PCM in CAF survives a crash (unlike m4a, which is unreadable until finalised).
+    output.audioSettings = [
+      AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000, AVNumberOfChannelsKey: 1,
+      AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+      AVLinearPCMIsNonInterleaved: false,
+    ]
+    capture.startRunning() // ponytail: blocks the main thread for a moment at start; move off-main if it's noticeable
+    output.startRecording(to: url, outputFileType: .caf, recordingDelegate: self)
+  }
+
+  /// 0…1 loudness, like AVAudioRecorder's metering.
+  var level: Double {
+    guard let db = output.connections.first?.audioChannels.first?.averagePowerLevel else { return 0 }
+    return pow(10, Double(db) / 20)
+  }
+
+  func pause() { output.pauseRecording() }
+  func resume() { output.resumeRecording() }
+
+  /// Returns once the file is finalised.
+  func stop() async {
+    if !done { await withCheckedContinuation { stopping = $0; output.stopRecording() } }
+    capture.stopRunning()
+  }
+
+  /// Quitting: finalise the file before the process exits, pumping the run loop for the callback.
+  func stopNow() {
+    output.stopRecording()
+    let deadline = Date() + 3
+    while !done, Date() < deadline { RunLoop.current.run(until: Date() + 0.05) }
+    capture.stopRunning()
+  }
+
+  nonisolated func fileOutput(_: AVCaptureFileOutput, didFinishRecordingTo _: URL, from _: [AVCaptureConnection], error: Error?) {
+    let ok = (error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool ?? (error == nil)
+    let message = ok ? nil : error?.localizedDescription
+    DispatchQueue.main.async {
+      MainActor.assumeIsolated {
+        self.done = true
+        if let stopping = self.stopping {
+          stopping.resume()
+          self.stopping = nil
+        } else if let message {
+          self.failed(message)
+        }
+      }
+    }
   }
 }

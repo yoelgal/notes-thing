@@ -1,69 +1,73 @@
 import AppKit
 import Observation
+import Sparkle
 
-/// Checks GitHub Releases and updates by re-running the install script,
-/// which is unsigned-friendly (curl downloads aren't quarantined by Gatekeeper).
+/// Sparkle, like Hex. No Apple Developer ID needed: Sparkle trusts an update because it's signed
+/// with our EdDSA key (the SPARKLE_PRIVATE_KEY secret in CI), and lets the ad-hoc signature change.
 @MainActor @Observable
-final class Updater {
+final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate {
   static let shared = Updater()
-  static let repo = "yoelgal/notes-thing"
 
+  /// Found by a background check. Shown in the menu rather than popping a window mid-lecture.
   private(set) var available: String?
-  private(set) var installing = false
+  private(set) var canCheck = false
+
+  @ObservationIgnored private var controller: SPUStandardUpdaterController!
+  @ObservationIgnored private var observation: NSKeyValueObservation?
+  /// "Install and Relaunch" during a session: held until the session is transcribed.
+  @ObservationIgnored private var pendingRelaunch: (() -> Void)?
 
   var current: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0" }
 
-  private init() {
-    Task { await check() }
-    Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in
-      Task { await Updater.shared.check() }
+  override private init() {
+    super.init()
+    controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: self)
+    observation = controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] u, _ in
+      MainActor.assumeIsolated { self?.canCheck = u.canCheckForUpdates }
     }
   }
 
-  @discardableResult
-  func check() async -> Bool {
-    guard let url = URL(string: "https://api.github.com/repos/\(Self.repo)/releases/latest"),
-          let (data, _) = try? await URLSession.shared.data(from: url),
-          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let tag = json["tag_name"] as? String else { return false }
-    let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-    available = latest.compare(current, options: .numeric) == .orderedDescending ? latest : nil
-    return true
-  }
-
-  func checkInteractively() {
-    Task {
-      let ok = await check()
-      if available != nil { return install() }
-      alert(ok ? "You're up to date" : "Couldn't check for updates",
-            ok ? "Notes Thing \(current) is the latest version." : "Check your internet connection and try again.")
-    }
-  }
-
-  func install() {
-    // The installer quits the app, which would cut a lecture short.
-    guard AppDelegate.shared?.session.state == .idle else {
-      return alert("Finish your session first", "Stop & Transcribe, then update. Your recording is safe.")
-    }
-    installing = true
-    let p = Process()
-    p.executableURL = URL(fileURLWithPath: "/bin/bash")
-    p.arguments = ["-c", "curl -fsSL https://notesthing.yoelgal.com/install.sh | bash"]
-    p.terminationHandler = { proc in
-      // The script quits and relaunches us on success; we only get here if it failed.
-      Task { @MainActor in
-        Updater.shared.installing = false
-        if proc.terminationStatus != 0 { NSWorkspace.shared.open(URL(string: "https://notesthing.yoelgal.com")!) }
-      }
-    }
-    try? p.run()
-  }
-
-  private func alert(_ title: String, _ text: String) {
-    let a = NSAlert()
-    a.messageText = title
-    a.informativeText = text
+  func check() {
     NSApp.activate(ignoringOtherApps: true)
-    a.runModal()
+    controller.checkForUpdates(nil)
+  }
+
+  func sessionEnded() {
+    pendingRelaunch?()
+    pendingRelaunch = nil
+  }
+
+  // MARK: SPUUpdaterDelegate
+
+  nonisolated func updater(_: SPUUpdater, shouldPostponeRelaunchForUpdate _: SUAppcastItem,
+                           untilInvokingBlock install: @escaping () -> Void) -> Bool {
+    MainActor.assumeIsolated {
+      // Relaunching quits the app, which would cut a lecture short.
+      guard let session = AppDelegate.shared?.session, session.state != .idle else { return false }
+      pendingRelaunch = install
+      let a = NSAlert()
+      a.messageText = "Update ready"
+      a.informativeText = "Notes Thing will update once this session is transcribed. Your recording is safe."
+      a.runModal()
+      return true
+    }
+  }
+
+  // MARK: Gentle reminders (Sparkle's advice for menu bar apps)
+
+  nonisolated var supportsGentleScheduledUpdateReminders: Bool { true }
+
+  /// Sparkle shows the window itself only when it would be in focus anyway (just after launch).
+  nonisolated func standardUserDriverShouldHandleShowingScheduledUpdate(_: SUAppcastItem, andInImmediateFocus immediateFocus: Bool) -> Bool {
+    immediateFocus
+  }
+
+  nonisolated func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state _: SPUUserUpdateState) {
+    let version = update.displayVersionString
+    MainActor.assumeIsolated { if !handleShowingUpdate { available = version } }
+  }
+
+  nonisolated func standardUserDriverWillFinishUpdateSession() {
+    MainActor.assumeIsolated { available = nil }
   }
 }
