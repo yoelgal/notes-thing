@@ -66,6 +66,7 @@ struct SettingsView: View {
   @State private var loginError: String?
   @State private var mic = AVCaptureDevice.authorizationStatus(for: .audio)
   @State private var recording: Action?
+  @AppStorage("showDockIcon") private var showDockIcon = true
 
   var body: some View {
     Form {
@@ -114,6 +115,12 @@ struct SettingsView: View {
           if let loginError { Text(loginError).font(.caption).foregroundStyle(.red) }
         } icon: {
           Image(systemName: "arrow.right.circle")
+        }
+        Label {
+          Toggle("Show Dock Icon", isOn: $showDockIcon)
+            .onChange(of: showDockIcon) { AppDelegate.updateDockIcon() }
+        } icon: {
+          Image(systemName: "dock.rectangle")
         }
         Label {
           HStack {
