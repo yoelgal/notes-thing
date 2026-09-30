@@ -10,6 +10,21 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+      # The self-signed "Notes Thing Signing" certificate (see scripts/build.sh), in a throwaway keychain.
+      - name: Import signing certificate
+        env:
+          P12: ${{ secrets.SIGNING_CERT_P12 }}
+          P12_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/signing.keychain-db"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p ci "$KC"
+          security set-keychain-settings "$KC"
+          security unlock-keychain -p ci "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$KC" >/dev/null
+          rm "$RUNNER_TEMP/cert.p12"
+          echo "SIGN_KEYCHAIN=$KC" >> "$GITHUB_ENV"
       - run: VERSION="${GITHUB_REF_NAME#v}" scripts/build.sh
       # Sparkle reads releases/latest/download/appcast.xml. The release stays a draft until the
       # appcast is attached, so "latest" never lacks one.
