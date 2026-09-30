@@ -1,9 +1,5 @@
 Sound credits for demo.mp4
 
-Voiceover: synthesised with Kokoro-82M (hexgrad/Kokoro-82M, voice "af_heart"), run locally via the
-HyperFrames CLI (`hyperframes tts`, kokoro-onnx). Kokoro-82M model weights and voices: Apache License 2.0.
-No human voice actor; no third-party TTS service.
-
 Music: original score composed and synthesised for this video (no third-party music).
 
 Sound effects (CC0 / public domain):
