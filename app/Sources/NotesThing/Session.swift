@@ -195,7 +195,14 @@ final class Session {
     } catch {
       failure = error.localizedDescription
     }
-    let md = Transcript.render(id: id, events: events, tokens: tokens, error: failure)
+    // Who spoke when. Best effort: if it fails, the transcript just has no speaker labels.
+    if failure == nil, let segments = try? await diarize(caf) {
+      tokens = Transcript.assignSpeakers(tokens, segments: segments)
+    }
+    let names = Speakers.load(dir)
+    let md = Transcript.render(id: id, events: events, tokens: tokens, names: names, error: failure)
+    let labels = Set(tokens.compactMap(\.speaker))
+    if labels.count > 1 { Speakers.save(dir, labels.reduce(into: names) { $0[$1] = $0[$1] ?? $1 }) }
     try? md.write(to: dir.appendingPathComponent("session.md"), atomically: true, encoding: .utf8)
 
     // Shrink audio to AAC with the built-in afconvert; keep the CAF if that fails or transcription did.
@@ -206,6 +213,15 @@ final class Session {
     if (try? p.run()) != nil {
       p.waitUntilExit()
       if p.terminationStatus == 0, failure == nil { try? FileManager.default.removeItem(at: caf) }
+    }
+  }
+
+  /// Offline diarizer (pyannote + WeSpeaker + VBx clustering); downloads its models on first use.
+  private nonisolated static func diarize(_ audio: URL) async throws -> [(start: TimeInterval, end: TimeInterval, id: String)] {
+    let diarizer = OfflineDiarizerManager()
+    try await diarizer.prepareModels()
+    return try await diarizer.process(audio).segments.map {
+      (TimeInterval($0.startTimeSeconds), TimeInterval($0.endTimeSeconds), $0.speakerId)
     }
   }
 

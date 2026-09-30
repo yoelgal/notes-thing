@@ -12,6 +12,8 @@ struct SessionRecord: Identifiable {
   /// The first few transcript sentences; nil if session.md hasn't been written yet.
   let preview: String?
   let audio: URL?
+  /// speakers.json: "Speaker N" → the name shown in session.md. Empty for one-speaker sessions.
+  let speakers: [String: String]
 
   var markdown: URL { dir.appendingPathComponent("session.md") }
 
@@ -31,10 +33,44 @@ struct SessionRecord: Identifiable {
       let sentences = md.split(separator: "\n")
         .filter { $0.first == "[" }
         .map { $0.drop { $0 != "]" }.dropFirst().trimmingCharacters(in: .whitespaces) }
+        .map { $0.replacingOccurrences(of: #"^\*\*[^*]+:\*\* "#, with: "", options: .regularExpression) }
       return sentences.isEmpty ? "No speech was transcribed." : sentences.prefix(3).joined(separator: " ")
     }
     audio = ["audio.m4a", "audio.caf"].map { dir.appendingPathComponent($0) }
       .first { FileManager.default.fileExists(atPath: $0.path) }
+    speakers = Speakers.load(dir)
+  }
+}
+
+/// `speakers.json` in a session folder: which name each diarized voice gets in session.md.
+enum Speakers {
+  static func url(_ dir: URL) -> URL { dir.appendingPathComponent("speakers.json") }
+
+  static func load(_ dir: URL) -> [String: String] {
+    (try? Data(contentsOf: url(dir))).flatMap { try? JSONDecoder().decode([String: String].self, from: $0) } ?? [:]
+  }
+
+  static func save(_ dir: URL, _ names: [String: String]) {
+    let enc = JSONEncoder()
+    enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+    try? enc.encode(names).write(to: url(dir), options: .atomic)
+  }
+
+  /// Renames a voice by rewriting its `**name:**` labels in session.md, so hand edits survive.
+  /// ponytail: voices given the same name are merged, and rename together from then on.
+  static func rename(_ dir: URL, _ label: String, to name: String) {
+    var names = load(dir)
+    let old = names[label] ?? label
+    let new = name.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "*", with: "")
+    let resolved = new.isEmpty ? label : new
+    guard resolved != old else { return }
+    let md = dir.appendingPathComponent("session.md")
+    if let text = try? String(contentsOf: md, encoding: .utf8) {
+      try? text.replacingOccurrences(of: "] **\(old):** ", with: "] **\(resolved):** ")
+        .write(to: md, atomically: true, encoding: .utf8)
+    }
+    for (k, v) in names where v == old { names[k] = resolved }
+    save(dir, names)
   }
 }
 
@@ -68,6 +104,11 @@ final class History {
     if playing == r.id { player?.stop(); playing = nil }
     try? FileManager.default.trashItem(at: r.dir, resultingItemURL: nil)
     records.removeAll { $0.id == r.id }
+  }
+
+  func rename(_ r: SessionRecord, _ label: String, to name: String) {
+    Speakers.rename(r.dir, label, to: name)
+    if let i = records.firstIndex(where: { $0.id == r.id }), let fresh = SessionRecord(dir: r.dir) { records[i] = fresh }
   }
 
   /// For sessions that were quit mid-lecture: same as `NotesThing --finish`.
@@ -114,6 +155,7 @@ private struct SessionCard: View {
   private var history: History { .shared }
 
   @State private var showCopied = false
+  @State private var showSpeakers = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -177,6 +219,14 @@ private struct SessionCard: View {
           .foregroundStyle(showCopied ? .green : .secondary)
           .help("Copy /notes \(record.id)")
 
+          if !record.speakers.isEmpty {
+            Button { showSpeakers = true } label: { Image(systemName: "person.2.fill") }
+              .buttonStyle(.plain)
+              .foregroundStyle(.secondary)
+              .help("Name the speakers")
+              .popover(isPresented: $showSpeakers, arrowEdge: .bottom) { SpeakerNames(record: record) }
+          }
+
           if record.audio != nil {
             Button { history.togglePlay(record) } label: {
               Image(systemName: history.playing == record.id ? "stop.fill" : "play.fill")
@@ -228,5 +278,40 @@ private struct SessionCard: View {
       try? await Task.sleep(for: .seconds(1.5))
       withAnimation { showCopied = false }
     }
+  }
+}
+
+/// One field per detected voice; Enter (or closing the popover) renames it in session.md.
+private struct SpeakerNames: View {
+  let record: SessionRecord
+  @State private var drafts: [String: String] = [:]
+
+  private var labels: [String] {
+    record.speakers.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Speakers").font(.headline)
+      ForEach(labels, id: \.self) { label in
+        LabeledContent(label) {
+          TextField(label, text: Binding(get: { drafts[label] ?? "" }, set: { drafts[label] = $0 }))
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 160)
+            .onSubmit { commit(label) }
+        }
+      }
+      Text("Give two voices the same name to merge them.").font(.caption).foregroundStyle(.secondary)
+    }
+    .padding(14)
+    .onAppear { drafts = record.speakers.filter { $0.key != $0.value } }
+    .onDisappear { labels.forEach(commit) }
+  }
+
+  private func commit(_ label: String) {
+    let name = drafts[label] ?? ""
+    let current = record.speakers[label] ?? label
+    guard name != (current == label ? "" : current) else { return }
+    History.shared.rename(record, label, to: name)
   }
 }
