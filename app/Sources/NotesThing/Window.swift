@@ -17,14 +17,16 @@ final class AppWindow: NSWindow {
   private let state = WindowState()
 
   init(session: Session) {
-    super.init(contentRect: NSRect(x: 0, y: 0, width: 760, height: 600),
+    // Hex's settings window: 700×700, 620×560 minimum, unified toolbar.
+    super.init(contentRect: NSRect(x: 0, y: 0, width: 700, height: 700),
                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                backing: .buffered, defer: false)
     title = "Notes Thing"
     isReleasedWhenClosed = false
-    contentMinSize = NSSize(width: 640, height: 460)
+    contentMinSize = NSSize(width: 620, height: 560)
+    toolbarStyle = .unified
     contentViewController = NSHostingController(rootView: AppView(session: session, state: state))
-    setContentSize(NSSize(width: 760, height: 600))
+    setContentSize(NSSize(width: 700, height: 700))
     center()
   }
 
@@ -67,6 +69,7 @@ struct SettingsView: View {
   @State private var mic = AVCaptureDevice.authorizationStatus(for: .audio)
   @State private var recording: Action?
   @AppStorage("showDockIcon") private var showDockIcon = true
+  @AppStorage("preventSleep") private var preventSleep = true
 
   var body: some View {
     Form {
@@ -101,6 +104,10 @@ struct SettingsView: View {
           .font(.footnote).foregroundStyle(.secondary)
       }
 
+      if mic == .authorized {
+        MicrophoneSection()
+      }
+
       Section("General") {
         Label {
           Toggle("Open on Login", isOn: $launchAtLogin)
@@ -123,6 +130,11 @@ struct SettingsView: View {
           Image(systemName: "dock.rectangle")
         }
         Label {
+          Toggle("Prevent System Sleep while Recording", isOn: $preventSleep)
+        } icon: {
+          Image(systemName: "zzz")
+        }
+        Label {
           HStack {
             Text("Sessions Folder")
             Spacer()
@@ -140,6 +152,42 @@ struct SettingsView: View {
     .formStyle(.grouped)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       mic = AVCaptureDevice.authorizationStatus(for: .audio)
+    }
+  }
+}
+
+/// Hex's MicrophoneSelectionSectionView.
+private struct MicrophoneSection: View {
+  @AppStorage("microphone") private var selected = "" // "" is the system default
+  @State private var devices = Recorder.devices()
+
+  private var missing: Bool { !selected.isEmpty && !devices.contains { $0.uniqueID == selected } }
+
+  var body: some View {
+    Section {
+      HStack {
+        Label {
+          Picker("Input Device", selection: $selected) {
+            Text(AVCaptureDevice.default(for: .audio).map { "System Default (\($0.localizedName))" } ?? "System Default").tag("")
+            ForEach(devices, id: \.uniqueID) { Text($0.localizedName).tag($0.uniqueID) }
+            if missing { Text("Unavailable Device").tag(selected) }
+          }
+          .pickerStyle(.menu)
+        } icon: {
+          Image(systemName: "mic.circle")
+        }
+        Button { devices = Recorder.devices() } label: { Image(systemName: "arrow.clockwise") }
+          .buttonStyle(.borderless)
+          .help("Refresh available input devices")
+      }
+      if missing {
+        Text("Selected device not connected. System default will be used.").font(.caption).foregroundStyle(.secondary)
+      }
+    } header: {
+      Text("Microphone Selection")
+    } footer: {
+      Text("Record from a specific input device instead of the system default. Applies from the next session.")
+        .font(.footnote).foregroundStyle(.secondary)
     }
   }
 }
@@ -296,9 +344,9 @@ struct AboutView: View {
           Label("Version", systemImage: "info.circle")
           Spacer()
           Text(updater.current)
-          Button(updater.available.map { "Update to \($0)" } ?? "Check for Updates") { updater.checkInteractively() }
+          Button(updater.available.map { "Update to \($0)" } ?? "Check for Updates") { updater.check() }
             .buttonStyle(.bordered)
-            .disabled(updater.installing)
+            .disabled(!updater.canCheck)
         }
         HStack {
           Label("Notes Thing is open source", systemImage: "apple.terminal.on.rectangle")

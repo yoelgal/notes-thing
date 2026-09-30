@@ -46,5 +46,5 @@ open "$DEST/$NAME"
 
 printf "\n%s✓ Installed.%s Look for the icon in your menu bar. ⌃⌥P starts a session.\n" "$green" "$reset"
 printf "%s  First run downloads the speech model (~650 MB).\n" "$dim"
-printf "  Update: run this command again.\n"
+printf "  Updates: automatic, or Check for Updates… in the menu.\n"
 printf "  Uninstall: quit the app and drag it from %s to the Trash. Your sessions stay in ~/Sessions.%s\n" "$DEST" "$reset"

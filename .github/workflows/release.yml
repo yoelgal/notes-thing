@@ -6,10 +6,36 @@ permissions:
   contents: write
 jobs:
   release:
-    runs-on: macos-15
+    # Xcode 26's SDK: apps linked against an older one get the legacy window look on macOS 26.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - run: VERSION="${GITHUB_REF_NAME#v}" scripts/build.sh
-      - run: gh release create "$GITHUB_REF_NAME" dist/NotesThing.zip --generate-notes
+      # Sparkle reads releases/latest/download/appcast.xml. The release stays a draft until the
+      # appcast is attached, so "latest" never lacks one.
+      - name: Publish release and appcast
         env:
           GH_TOKEN: ${{ github.token }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          TAG="$GITHUB_REF_NAME"; VERSION="${TAG#v}"
+          gh release create "$TAG" dist/NotesThing.zip --generate-notes --draft
+          NOTES=$(gh release view "$TAG" --json body -q .body)
+          SIG=$(echo "$SPARKLE_PRIVATE_KEY" | app/.build/artifacts/sparkle/Sparkle/bin/sign_update --ed-key-file - dist/NotesThing.zip)
+          cat > appcast.xml <<XML
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+          <channel><title>Notes Thing</title>
+          <item>
+            <title>$VERSION</title>
+            <pubDate>$(date -R)</pubDate>
+            <sparkle:version>$VERSION</sparkle:version>
+            <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[$NOTES]]></description>
+            <enclosure url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/NotesThing.zip" type="application/octet-stream" $SIG/>
+          </item>
+          </channel></rss>
+          XML
+          gh release upload "$TAG" appcast.xml
+          gh release edit "$TAG" --draft=false --latest

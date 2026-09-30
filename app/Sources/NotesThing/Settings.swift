@@ -30,6 +30,25 @@ struct Shortcut: Codable, Equatable {
 
   var display: String { parts.joined() }
 
+  /// For menu items, so the shortcut shows greyed out on the right like other menus.
+  var keyEquivalent: KeyEquivalent? {
+    let named: [String: KeyEquivalent] = [
+      "Space": .space, "↩": .return, "⇥": .tab, "⌫": .delete, "⌦": .deleteForward,
+      "←": .leftArrow, "→": .rightArrow, "↓": .downArrow, "↑": .upArrow,
+    ]
+    if let k = named[key] { return k }
+    if key.count == 1, let c = key.lowercased().first { return KeyEquivalent(c) }
+    if key.hasPrefix("F"), let n = Int(key.dropFirst()), let u = UnicodeScalar(NSF1FunctionKey + n - 1) {
+      return KeyEquivalent(Character(u))
+    }
+    return nil
+  }
+
+  var eventModifiers: SwiftUI.EventModifiers {
+    [(NSEvent.ModifierFlags.control, SwiftUI.EventModifiers.control), (.option, .option), (.shift, .shift), (.command, .command)]
+      .reduce(into: []) { if flags.contains($1.0) { $0.insert($1.1) } }
+  }
+
   init(keyCode: Int, modifiers: NSEvent.ModifierFlags, key: String) {
     self.keyCode = UInt32(keyCode)
     self.modifiers = modifiers.intersection([.control, .option, .shift, .command]).rawValue

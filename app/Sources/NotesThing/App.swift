@@ -14,6 +14,8 @@ struct NotesThingApp: App {
       let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .shift, timestamp: 0, windowNumber: 0,
                                context: nil, characters: "N", charactersIgnoringModifiers: "N", isARepeat: false, keyCode: 45)!
       precondition(Shortcut(e) == nil, "shift-only shortcuts must be rejected")
+      precondition(s.keyEquivalent == KeyEquivalent("n") && s.eventModifiers == SwiftUI.EventModifiers([.command, .control, .shift]), "menu shortcut")
+      precondition(Shortcut(keyCode: 122, modifiers: .option, key: "F1").keyEquivalent == KeyEquivalent(Character(UnicodeScalar(NSF1FunctionKey)!)), "F-key")
       exit(0)
     }
     if let i = CommandLine.arguments.firstIndex(of: "--finish"), i + 1 < CommandLine.arguments.count {
@@ -43,10 +45,10 @@ struct Menu: View {
   var body: some View {
     switch session.state {
     case .idle:
-      Button("New Session  \(keys[.toggle].display)") { session.toggle() }
+      Button("New Session") { session.toggle() }.shortcut(keys[.toggle])
     case .recording, .paused:
-      Button("\(session.state == .paused ? "Resume" : "Pause")  \(keys[.toggle].display)") { session.toggle() }
-      Button("Add Note  \(keys[.note].display)") { AppDelegate.shared?.notePanel.show() }
+      Button(session.state == .paused ? "Resume" : "Pause") { session.toggle() }.shortcut(keys[.toggle])
+      Button("Add Note") { AppDelegate.shared?.notePanel.show() }.shortcut(keys[.note])
       Button("Stop & Transcribe") { session.stop() }
     case .transcribing:
       Text("Transcribing…")
@@ -61,17 +63,22 @@ struct Menu: View {
       NSWorkspace.shared.open(Session.root)
     }
     let updater = Updater.shared
-    if updater.installing {
-      Text("Updating…")
-    } else if let v = updater.available {
-      Button("Update to \(v)…") { updater.install() }
+    if let v = updater.available {
+      Button("Update to \(v)…") { updater.check() }
     } else {
-      Button("Check for Updates…") { updater.checkInteractively() }
+      Button("Check for Updates…") { updater.check() }.disabled(!updater.canCheck)
     }
     Button("History…") { AppDelegate.shared?.window.show(.history) }
     Button("Settings…") { AppDelegate.shared?.window.show(.settings) }.keyboardShortcut(",")
     Divider()
     Button("Quit") { NSApp.terminate(nil) }.keyboardShortcut("q")
+  }
+}
+
+extension View {
+  /// Shows a global shortcut on a menu item, like Hex's Paste Last Transcript.
+  @ViewBuilder func shortcut(_ s: Shortcut) -> some View {
+    if let k = s.keyEquivalent { keyboardShortcut(k, modifiers: s.eventModifiers) } else { self }
   }
 }
 
