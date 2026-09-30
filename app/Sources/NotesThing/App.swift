@@ -92,6 +92,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     overlay?.orderFrontRegardless()
     HotKeys.bind(.toggle, Prefs.shared[.toggle]) { [session] in session.toggle() }
     HotKeys.bind(.note, Prefs.shared[.note]) { [weak self] in self?.notePanel.show() }
+    Self.updateDockIcon()
+    // Hex's onboarding: open the window on every launch except a login launch, so permissions and the model are up front.
+    if !Self.launchedAtLogin() { window.show() }
+  }
+
+  static func updateDockIcon() {
+    NSApp.setActivationPolicy(UserDefaults.standard.object(forKey: "showDockIcon") as? Bool ?? true ? .regular : .accessory)
+  }
+
+  private static func launchedAtLogin() -> Bool {
+    guard let e = NSAppleEventManager.shared().currentAppleEvent else { return false }
+    return e.eventID == AEEventID(kAEOpenApplication)
+      && e.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == AEEventClass(keyAELaunchedAsLogInItem)
+  }
+
+  func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows _: Bool) -> Bool {
+    window.show()
+    return true
   }
 
   func applicationWillTerminate(_: Notification) {
