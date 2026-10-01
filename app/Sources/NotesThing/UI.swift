@@ -87,15 +87,22 @@ struct CapsuleView: View {
   }
 }
 
-/// Hex's InvisibleWindow: a click-through panel covering the screen, capsule drawn top-centre.
-/// ponytail: main screen only, Hex follows the mouse across displays if that's ever needed.
+extension NSScreen {
+  /// The display the pointer is on, so the capsule and note field show up where you're looking.
+  static var withMouse: NSScreen {
+    screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? main ?? screens[0]
+  }
+}
+
+/// Hex's InvisibleWindow: a click-through panel covering the screen with the mouse, capsule drawn top-centre.
 final class OverlayWindow: NSPanel {
   override var canBecomeKey: Bool { false }
   override var canBecomeMain: Bool { false }
 
+  private var mouseMonitor: Any?
+
   init<V: View>(_ view: V) {
-    let screen = NSScreen.main ?? NSScreen.screens[0]
-    super.init(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+    super.init(contentRect: NSScreen.withMouse.frame, styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
                backing: .buffered, defer: false)
     level = .statusBar
     backgroundColor = .clear
@@ -106,6 +113,20 @@ final class OverlayWindow: NSPanel {
     collectionBehavior = [.fullScreenAuxiliary, .canJoinAllSpaces, .stationary, .ignoresCycle]
     contentView = NSHostingView(rootView: view.padding().padding(.top).padding(.top)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
+    // Follow the mouse across displays, and refit when a monitor is plugged in, unplugged or rearranged
+    // (a frame fixed at launch leaves the capsule off-screen).
+    NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil,
+                                           queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.follow() }
+    }
+    mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+      MainActor.assumeIsolated { self?.follow() }
+    }
+  }
+
+  private func follow() {
+    let frame = NSScreen.withMouse.frame
+    if self.frame != frame { setFrame(frame, display: true) }
   }
 }
 
@@ -177,7 +198,7 @@ final class NotePanel: NSPanel {
   func show() {
     guard session.state == .recording || session.state == .paused else { return }
     contentView = NSHostingView(rootView: NoteField(session: session) { [weak self] in self?.orderOut(nil) })
-    let screen = NSScreen.main ?? NSScreen.screens[0]
+    let screen = NSScreen.withMouse
     let size = NSSize(width: 460, height: 44)
     setFrame(NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - 110, width: size.width, height: size.height),
              display: true)
