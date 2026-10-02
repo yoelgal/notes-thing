@@ -52,7 +52,10 @@ Quit from the menu, then drag **Notes Thing** from Applications to the Trash. Yo
 - Change either shortcut, or the transcription model, in **Settings…** (`⌘,` from the menu).
 - **History…** lists every session: play the audio, open the transcript, copy `/notes <id>`, or transcribe one you quit mid-recording.
 - Menu bar → **Stop & Transcribe**: writes `~/Sessions/<id>/session.md` and copies `/notes <id>` to the clipboard.
+- `/notes <id>` asks your AI agent about a session: it summarises it and explains each note in context. Install it with **Get Started → Install** in the app, or `npx skills add yoelgal/notes-thing --skill notes -g` (Claude Code, Codex, Cursor and other agents). Chat assistants: give them `session.md`.
 - More than one voice? The transcript labels each change of speaker (**Speaker 1:**, **Speaker 2:**…). Name them with the people button in **History…**; giving two the same name merges them.
+
+Sessions live in `~/Sessions` unless you pick another folder with **Settings → Sessions Folder → Change…**, which moves them for you. Don't move or rename the folder in Finder: History and `/notes` would lose track of it (the app will ask you to point it at the new place).
 
 Each session folder: `events.jsonl` (written live), `audio.caf` while recording → `audio.m4a` after, `session.md`, and `speakers.json` (speaker names) when there's more than one voice.
 

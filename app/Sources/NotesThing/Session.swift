@@ -7,7 +7,49 @@ import Observation
 final class Session {
   enum State { case idle, recording, paused, transcribing }
 
-  static let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Sessions")
+  /// Where sessions live: ~/Sessions unless moved with Settings → Change…. The path is remembered once
+  /// the folder exists, so one moved in Finder is reported instead of silently recreated empty.
+  /// The /notes skill reads the same default (`defaults read com.yoelgal.notesthing sessionsFolder`).
+  static var root: URL {
+    UserDefaults.standard.string(forKey: "sessionsFolder").map { URL(fileURLWithPath: $0, isDirectory: true) }
+      ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Sessions", isDirectory: true)
+  }
+
+  static var rootMissing: Bool {
+    UserDefaults.standard.string(forKey: "sessionsFolder") != nil && !FileManager.default.fileExists(atPath: root.path)
+  }
+
+  /// Pins the current folder once it exists (covers installs from before the setting).
+  static func rememberRoot() {
+    if !rootMissing, FileManager.default.fileExists(atPath: root.path) {
+      UserDefaults.standard.set(root.path, forKey: "sessionsFolder")
+    }
+  }
+
+  /// Opens the folder in Finder, or Settings if it has gone missing.
+  static func openRoot() {
+    if rootMissing { return AppDelegate.shared?.window.show(.settings) ?? () }
+    try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    rememberRoot()
+    NSWorkspace.shared.open(root)
+  }
+
+  /// Settings → Change…: moves every session into `new`, then points the app there.
+  /// Checks for clashes first so a failure can't leave sessions split across two folders.
+  static func moveRoot(to new: URL) throws {
+    let fm = FileManager.default, old = root.standardizedFileURL, new = new.standardizedFileURL
+    guard new != old else { return }
+    guard !new.path.hasPrefix(old.path + "/") else {
+      throw NSError(domain: "NotesThing", code: 2, userInfo: [NSLocalizedDescriptionKey: "Pick a folder outside the current sessions folder."])
+    }
+    let items = ((try? fm.contentsOfDirectory(at: old, includingPropertiesForKeys: nil)) ?? []).filter { $0.lastPathComponent != ".DS_Store" }
+    if let clash = items.first(where: { fm.fileExists(atPath: new.appendingPathComponent($0.lastPathComponent).path) }) {
+      throw NSError(domain: "NotesThing", code: 3, userInfo: [NSLocalizedDescriptionKey: "\(new.lastPathComponent) already has a \(clash.lastPathComponent). Pick an empty folder."])
+    }
+    for item in items { try fm.moveItem(at: item, to: new.appendingPathComponent(item.lastPathComponent)) }
+    if (try? fm.contentsOfDirectory(atPath: old.path).filter { $0 != ".DS_Store" })?.isEmpty == true { try? fm.removeItem(at: old) }
+    UserDefaults.standard.set(new.path, forKey: "sessionsFolder")
+  }
 
   var state: State = .idle {
     didSet {
@@ -82,12 +124,17 @@ final class Session {
 
   func start() async {
     guard await AVCaptureDevice.requestAccess(for: .audio) else { return alert("Microphone access is off. Enable it in System Settings → Privacy → Microphone.") }
+    if Self.rootMissing {
+      AppDelegate.shared?.window.show(.settings)
+      return alert("Your sessions folder isn't at \((Self.root.path as NSString).abbreviatingWithTildeInPath) any more. If you moved it, choose where it is now in Settings → Sessions Folder → Change….")
+    }
     let f = DateFormatter()
     f.dateFormat = "yyyyMMdd-HHmm"
     id = f.string(from: Date())
     dir = Self.root.appendingPathComponent(id)
     do {
       try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      Self.rememberRoot()
       recorder = try Recorder(url: dir.appendingPathComponent("audio.caf")) { [weak self] error in
         self?.alert("Recording stopped: \(error) The audio up to now is saved.")
       }
