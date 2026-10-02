@@ -111,7 +111,7 @@ final class History {
     if let i = records.firstIndex(where: { $0.id == r.id }), let fresh = SessionRecord(dir: r.dir) { records[i] = fresh }
   }
 
-  /// For sessions that were quit mid-lecture: same as `NotesThing --finish`.
+  /// For sessions that were quit mid-recording: same as `NotesThing --finish`.
   func transcribe(_ r: SessionRecord) {
     transcribing.insert(r.id)
     Task {
@@ -134,7 +134,7 @@ struct HistoryView: View {
         ContentUnavailableView {
           Label("No Sessions", systemImage: "text.bubble")
         } description: {
-          Text("Your lectures will appear here. Press \(Prefs.shared[.toggle].display) to start one.")
+          Text("Your recordings will appear here. Press \(Prefs.shared[.toggle].display) to start one.")
         }
       } else {
         ScrollView {

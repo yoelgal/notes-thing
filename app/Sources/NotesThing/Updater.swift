@@ -8,7 +8,7 @@ import Sparkle
 final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate {
   static let shared = Updater()
 
-  /// Found by a background check. Shown in the menu rather than popping a window mid-lecture.
+  /// Found by a background check. Shown in the menu rather than popping a window mid-session.
   private(set) var available: String?
   private(set) var canCheck = false
 
@@ -42,7 +42,7 @@ final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
   nonisolated func updater(_: SPUUpdater, shouldPostponeRelaunchForUpdate _: SUAppcastItem,
                            untilInvokingBlock install: @escaping () -> Void) -> Bool {
     MainActor.assumeIsolated {
-      // Relaunching quits the app, which would cut a lecture short.
+      // Relaunching quits the app, which would cut a recording short.
       guard let session = AppDelegate.shared?.session, session.state != .idle else { return false }
       pendingRelaunch = install
       let a = NSAlert()

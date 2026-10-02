@@ -34,7 +34,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>SUFeedURL</key><string>https://github.com/yoelgal/notes-thing/releases/latest/download/appcast.xml</string>
   <key>SUPublicEDKey</key><string>OIXJMQORA3X2MJW+sf9lDwE9vwV1tKCvIhDqkdyjruE=</string>
   <key>SUEnableAutomaticChecks</key><true/>
-  <key>NSMicrophoneUsageDescription</key><string>Records your lectures so they can be transcribed on this Mac.</string>
+  <key>NSMicrophoneUsageDescription</key><string>Records audio so it can be transcribed on this Mac.</string>
 </dict></plist>
 PLIST
 

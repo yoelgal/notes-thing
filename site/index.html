@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Notes Thing: lecture notes that land in the transcript</title>
-<meta name="description" content="A free menu bar recorder for Mac. Jot notes during a lecture and get a transcript with each note placed at the second you wrote it. Transcribes on your Mac.">
+<title>Notes Thing: record anything, notes land in the transcript</title>
+<meta name="description" content="A free menu bar recorder for Mac. Record a meeting, lecture, call or anything else, jot notes as you listen, and get a transcript with each note placed at the second you wrote it. Transcribes on your Mac.">
 <meta name="theme-color" content="#0C0D10">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://notesthing.yoelgal.com/">
-<meta property="og:title" content="Notes Thing: lecture notes that land in the transcript">
-<meta property="og:description" content="Record from the menu bar, jot notes as you listen, get a transcript with every note at the second you wrote it. On-device, free.">
-<meta property="og:image" content="https://notesthing.yoelgal.com/assets/demo.jpg">
+<meta property="og:title" content="Notes Thing: record anything, notes land in the transcript">
+<meta property="og:description" content="Record meetings, lectures, calls, anything. Jot notes as you listen and get a transcript with every note at the second you wrote it. On-device, free.">
+<meta property="og:image" content="https://notesthing.yoelgal.com/assets/demo.jpg?v=2">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" href="/assets/favicon.png">
 <link rel="apple-touch-icon" href="/assets/icon.png">
@@ -69,7 +69,7 @@ main{width:min(860px,100% - 24px);margin:clamp(20px,6vh,64px) 0 0}
 
 /* The app's overlay capsule (Hex's indicator), top-centre */
 .capsule{position:absolute;top:4.6cqw;left:50%;translate:-50% 0;height:2cqw;width:7cqw;border-radius:1cqw;z-index:7;
-  background:#7a1d18;box-shadow:inset 0 0 .5cqw var(--rec),0 0 calc(var(--lvl,0)*2cqw) rgba(255,69,58,.8);transition:width .3s cubic-bezier(.3,1.4,.5,1),background .3s,box-shadow .08s}
+  background:#7a1d18;box-shadow:inset 0 0 .5cqw var(--rec),0 0 calc(var(--lvl,0)*2cqw) rgba(255,69,58,.8);transition:width .3s cubic-bezier(.3,1.4,.5,1),background .3s}
 .capsule::after{content:"";position:absolute;inset:.7cqw 1cqw;border-radius:.4cqw;background:rgba(255,255,255,calc(var(--lvl,0)*.7));filter:blur(1px)}
 .capsule.paused{width:2cqw;background:#3d3d3d;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
 .capsule.paused::after,.capsule.busy::after{opacity:0}
@@ -84,7 +84,7 @@ main{width:min(860px,100% - 24px);margin:clamp(20px,6vh,64px) 0 0}
 .tb span{flex:1;text-align:center;margin-right:4cqw}
 .kn{left:8cqw;right:8cqw;top:8.4cqw;bottom:7cqw;background:#fff;color:#16181D;transition:filter .5s}
 .kn .tb{background:#ECEBE8;border-bottom:1px solid #DCDAD5;color:#555}
-.slide{padding:4.2cqw 5.5cqw}
+.slide{padding:4.2cqw 5.5cqw;transition:opacity .35s}
 .slide .k{font:500 1.2cqw var(--mono);color:#8a8378;letter-spacing:.15cqw}
 .slide h3{font:500 4.4cqw/1.08 var(--serif);letter-spacing:-.08cqw;margin-top:1.6cqw}
 .slide .f{font:italic 400 3.3cqw var(--serif);margin-top:2.6cqw}
@@ -92,7 +92,7 @@ main{width:min(860px,100% - 24px);margin:clamp(20px,6vh,64px) 0 0}
 .slide ul li::before{content:"— ";color:#9a958c}
 .screen[data-s=paused] .kn{filter:brightness(.55) saturate(.6)}
 
-/* What the lecturer is saying, as subtitles */
+/* What the speaker is saying, as subtitles */
 .sub{position:absolute;left:12cqw;right:12cqw;bottom:2.2cqw;z-index:5;text-align:center;font-size:max(12px,1.85cqw);line-height:1.35;color:#fff}
 .sub span{background:rgba(0,0,0,.75);padding:.25cqw .8cqw;border-radius:.5cqw;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 .sub:empty{display:none}
@@ -181,21 +181,21 @@ footer a{text-underline-offset:3px}
   <div class="sheet">
     <div class="row head" id="head" data-s="recording">
       <div class="cell logo"><img src="/assets/icon.png" alt=""></div>
-      <h1 class="cell">Notes Thing <small>lecture notes that know when you wrote them</small></h1>
+      <h1 class="cell">Notes Thing <small>record anything, notes land where they belong</small></h1>
       <div class="cell state" aria-hidden="true"><span class="dot"></span><span id="stateText"><b>Recording</b> 14:00</span></div>
       <a class="cell gh" href="https://github.com/yoelgal/notes-thing" aria-label="Source on GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
     </div>
 
-    <div class="screen" id="screen" data-s="recording" role="img" aria-label="Demo: a lecture plays on a Mac while notes are added with a shortcut, then the transcript appears with each note where it was written">
+    <div class="screen" id="screen" data-s="recording" role="img" aria-label="Demo: a meeting, a lecture or a talk plays on a Mac while notes are added with a shortcut, then the transcript appears with each note where it was written">
       <div class="mb" aria-hidden="true">
         <svg class="apple" viewBox="0 0 14 17"><path d="M11.6 9c0-2 1.7-3 1.8-3.1-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.8-3.2.8-.7 0-1.7-.8-2.8-.7C3 4.4 1.7 5.3 1 6.6c-1.5 2.6-.4 6.4 1.1 8.5.7 1 1.5 2.2 2.6 2.1 1-.04 1.4-.7 2.7-.7s1.6.7 2.7.7c1.1 0 1.8-1 2.5-2.1.8-1.2 1.1-2.3 1.1-2.4 0 0-2.2-.8-2.2-3.3zM9.5 2.9C10.1 2.2 10.5 1.2 10.4.2c-.8 0-1.9.6-2.5 1.3-.5.6-1 1.6-.9 2.6.9.1 1.9-.5 2.5-1.2z"/></svg>
-        <b>Keynote</b><span>File</span><span>Edit</span><span>View</span><span>Play</span>
+        <b id="mbapp">Keynote</b><span>File</span><span>Edit</span><span>View</span><span>Play</span>
         <div class="r"><svg viewBox="0 0 19 18" id="mbicon"></svg><span>Tue 29 Sep</span><span>10:18</span></div>
       </div>
       <div class="capsule" id="capsule"></div>
 
       <div class="win kn">
-        <div class="tb"><i></i><i></i><i></i><span>Lecture 7: Scattering.key</span></div>
+        <div class="tb"><i></i><i></i><i></i><span id="kntitle">Q4 launch plan.key</span></div>
         <div class="slide" id="slide"></div>
       </div>
       <div class="sub" id="sub"></div>
@@ -234,12 +234,12 @@ footer a{text-underline-offset:3px}
 
 <section class="more" aria-labelledby="demo-h">
   <h2 id="demo-h">A whole session, start to finish.</h2>
-  <div class="video"><video src="/assets/demo.mp4" poster="/assets/demo.jpg" controls playsinline preload="metadata"></video></div>
+  <div class="video"><video src="/assets/demo.mp4?v=2" poster="/assets/demo.jpg?v=2" controls playsinline preload="metadata"></video></div>
   <div class="facts">
-    <div><h3>Nothing leaves your Mac</h3><p>NVIDIA’s Parakeet model transcribes on your Mac. It downloads once (about 650 MB). No account, no upload.</p></div>
+    <div><h3>Nothing leaves your Mac</h3><p>NVIDIA’s Parakeet model transcribes on your Mac, so private meetings stay private. It downloads once (about 650 MB). No account, no upload.</p></div>
     <div><h3>Safe if your laptop dies</h3><p>Notes hit the disk the moment you save them, and the audio records in a crash-safe format.</p></div>
     <div><h3>Your keys</h3><p><kbd>⌃⌥P</kbd> records and pauses. <kbd>⌃⌥N</kbd> adds a note. Change either one in Settings.</p></div>
-    <div><h3>Plain Markdown</h3><p>Each lecture is a folder in <code>~/Sessions</code>. Its name is copied for you, ready to paste into your AI assistant.</p></div>
+    <div><h3>Plain Markdown</h3><p>Each recording is a folder in <code>~/Sessions</code>. Its name is copied for you, ready to paste into your AI assistant.</p></div>
   </div>
 </section>
 
@@ -275,27 +275,53 @@ function icon(state) {
   $('mbicon').innerHTML = cap + body;
 }
 
-// The lecture, the slides, and the notes a slightly tired student jots.
-const T0 = 14 * 60;
-const slides = {
-  intro: { h: 'Why is the sky blue?', f: 'I ∝ 1 / λ⁴', ul: ['Rayleigh scattering', 'short wavelengths scatter most'] },
-  iceland: { h: 'A quick story', ul: ['Reykjavík, 2009', 'the luggage incident'] },
-  violet: { h: 'So why not violet?', ul: ['less violet in sunlight', 'our eyes barely see it'] },
-  sunset: { h: 'Sunsets', f: 'longer path, less blue', ul: ['blue is scattered out on the way'] },
-  hw: { h: 'For Thursday', ul: ['Chapter 9', 'Problems 1–6'] },
-};
-const script = [
-  { slide: 'intro', say: "Okay, settle down everyone. Today: why is the sky blue?" },
-  { say: "Sunlight hits the air, and short wavelengths scatter the most.", note: "short wavelength = more scatter" },
-  { say: "It goes as one over wavelength to the fourth." },
-  { say: "And this will absolutely be on the exam.", note: "ON THE EXAM", early: true },
-  { slide: 'iceland', say: "Now, a quick story about my trip to Iceland in 2009.", note: "iceland story #4 this term" },
-  { pause: "grab coffee after" },
-  { slide: 'violet', say: "Right, where was I. So why isn't the sky violet?", note: "wait, why isn't it violet??" },
-  { say: "The sun gives off less violet, and our eyes are bad at seeing it." },
-  { slide: 'sunset', say: "Sunsets are red because the light travels further through the air." },
-  { slide: 'hw', say: "Problems one to six, due Thursday.", note: "pset due thurs" },
+// Anything you might record: what's on screen, what's said, and the notes a slightly tired person jots.
+const scenes = [
+  { app: 'Keynote', title: 'Q4 launch plan.key', k: 'PRODUCT SYNC · WEEK 40', slides: {
+      plan: { h: 'Q4 launch plan', ul: ['beta wraps Oct 31', 'launch Nov 7'] },
+      slip: { h: 'One change', f: 'Nov 7 → Nov 14', ul: ['onboarding needs another week'] },
+      aob: { h: 'Any other business', ul: ['the new expense policy', '(14 slides)'] },
+      next: { h: 'Next steps', ul: ['Sam: budget by Friday', 'everyone: try the beta'] },
+    }, script: [
+      { slide: 'plan', say: "Okay, let's start. Quick one today, I promise." },
+      { say: "Beta wraps on the 31st, and the feedback has been good.", note: "beta feedback good" },
+      { slide: 'slip', say: "One change: launch moves to the 14th.", note: "LAUNCH NOW NOV 14", early: true },
+      { say: "Onboarding needs one more week of design." },
+      { pause: "ask Sam re: budget" },
+      { slide: 'aob', say: "Right. Fourteen slides on the new expense policy.", note: "this could've been an email" },
+      { slide: 'next', say: "Sam, budget by Friday please. Thanks all.", note: "budget fri" },
+    ] },
+  { app: 'Keynote', title: 'Lecture 7: Scattering.key', k: 'PHYS 101 · LECTURE 7', slides: {
+      intro: { h: 'Why is the sky blue?', f: 'I ∝ 1 / λ⁴', ul: ['Rayleigh scattering', 'short wavelengths scatter most'] },
+      iceland: { h: 'A quick story', ul: ['Reykjavík, 2009', 'the luggage incident'] },
+      violet: { h: 'So why not violet?', ul: ['less violet in sunlight', 'our eyes barely see it'] },
+      hw: { h: 'For Thursday', ul: ['Chapter 9', 'Problems 1–6'] },
+    }, script: [
+      { slide: 'intro', say: "Okay, settle down everyone. Today: why is the sky blue?" },
+      { say: "Short wavelengths scatter the most, as one over wavelength to the fourth.", note: "short wavelength = more scatter" },
+      { say: "And this will absolutely be on the exam.", note: "ON THE EXAM", early: true },
+      { slide: 'iceland', say: "Now, a quick story about my trip to Iceland in 2009.", note: "iceland story #4 this term" },
+      { pause: "grab coffee after" },
+      { slide: 'violet', say: "Right, where was I. So why isn't the sky violet?", note: "wait, why isn't it violet??" },
+      { slide: 'hw', say: "Problems one to six, due Thursday.", note: "pset due thurs" },
+    ] },
+  { app: 'Safari', title: 'Designing for latency – YouTube', k: 'STRANGE LOOP 2026 · TALK', slides: {
+      title: { h: 'Designing for latency', ul: ['users notice 100 ms', 'they hate 1 s'] },
+      opt: { h: 'Optimistic UI', f: 'assume success, fix later', ul: ['update first, sync after', 'roll back on error'] },
+      demo: { h: 'Live demo', ul: ['what could go wrong'] },
+      refs: { h: 'Further reading', ul: ['slides: latency.dev', 'Nielsen, 1993'] },
+    }, script: [
+      { slide: 'title', say: "Hi everyone. Today is about making apps feel fast." },
+      { say: "Users notice a hundred milliseconds. They hate a full second.", note: "100ms = noticeable" },
+      { slide: 'opt', say: "The trick is optimistic UI: show success right away.", note: "TRY THIS IN OUR APP", early: true },
+      { say: "Then sync in the background, and roll back if it fails." },
+      { pause: "send this talk to the team" },
+      { slide: 'demo', say: "Let me show you a live demo. Oh no, the wifi.", note: "lol the wifi" },
+      { slide: 'refs', say: "All the slides are up at latency dot dev.", note: "slides at latency.dev" },
+    ] },
 ];
+const T0 = 14 * 60;
+let scene = scenes[0], sceneIx = 0;
 
 const screen = $('screen'), head = $('head'), input = $('note'), pill = $('noteform');
 let t = 0, gen = 0, events = [], user = null;
@@ -308,8 +334,11 @@ function setState(s, label) {
   $('stateText').innerHTML = label ?? `<b>${s === 'paused' ? 'Paused' : 'Recording'}</b> ${stamp(T0 + t)}`;
 }
 function showSlide(name) {
-  const s = slides[name];
-  $('slide').innerHTML = `<div class="k">PHYS 101 · LECTURE 7</div><h3>${s.h}</h3>${s.f ? `<div class="f">${s.f}</div>` : ''}<ul>${s.ul.map(x => `<li>${x}</li>`).join('')}</ul>`;
+  const s = scene.slides[name], el = $('slide');
+  const html = `<div class="k">${scene.k}</div><h3>${s.h}</h3>${s.f ? `<div class="f">${s.f}</div>` : ''}<ul>${s.ul.map(x => `<li>${x}</li>`).join('')}</ul>`;
+  if (!el.innerHTML || reduce) { el.innerHTML = html; return; }
+  el.style.opacity = 0; // crossfade instead of a hard swap
+  setTimeout(() => { el.innerHTML = html; el.style.opacity = 1; }, 350);
 }
 function press(on) { for (const k of ['kCtrl', 'kOpt', 'kN']) $(k).classList.toggle('down', on); }
 function openPill() { $('saved').classList.remove('on'); pill.classList.add('on'); }
@@ -317,21 +346,21 @@ function closePill() { pill.classList.remove('on'); $('stamp').classList.remove(
 function anchor() { $('stampT').textContent = stamp(T0 + t); $('stamp').classList.add('on'); return { at: t, paused: screen.dataset.s === 'paused' }; }
 async function saved(at) {
   $('savedT').textContent = stamp(T0 + at); $('saved').classList.add('on');
-  await sleep(1100); $('saved').classList.remove('on');
+  await sleep(1600); $('saved').classList.remove('on');
 }
 
 async function typeNote(text, g) {
   if (user) return;
   press(true); await sleep(170); press(false);
-  openPill(); await sleep(220);
+  openPill(); await sleep(400);
   let a = null;
   for (let i = 1; i <= text.length; i++) {
     if (g !== gen || user) return;
     if (i === 1) a = anchor();
     input.value = text.slice(0, i);
-    await sleep(reduce ? 0 : 45 + Math.random() * 55);
+    await sleep(reduce ? 0 : 80 + Math.random() * 60);
   }
-  await sleep(350);
+  await sleep(600);
   if (g !== gen || user) return;
   closePill();
   events.push({ kind: 'note', t: a.at, text, paused: a.paused });
@@ -346,7 +375,7 @@ async function say(text, g) {
     $('sub').innerHTML = `<span>${esc(words.slice(0, i + 1).join(' '))}</span>`;
     t += 0.36;
     setState('recording');
-    await sleep(reduce ? 60 : 150 + Math.random() * 120);
+    await sleep(reduce ? 60 : 280 + Math.random() * 100);
   }
 }
 
@@ -359,48 +388,52 @@ function renderMd() {
     : `<div class="dl note"><span class="ts">note [${stamp(T0 + i.t)}${i.paused ? ', paused' : ''}]</span><span>${esc(i.text)}</span></div>`).join('');
 }
 
+let lvl = 0; // eased toward a random target so the glow breathes rather than flickers
 setInterval(() => {
   const on = screen.dataset.s === 'recording' && !reduce;
-  $('capsule').style.setProperty('--lvl', on ? (0.25 + Math.random() * 0.75).toFixed(2) : 0);
-}, 90);
+  lvl += ((on ? 0.3 + Math.random() * 0.45 : 0) - lvl) * 0.25;
+  $('capsule').style.setProperty('--lvl', lvl.toFixed(2));
+}, 60);
 
 async function run() {
   const g = ++gen;
   t = 0; events = [];
+  scene = scenes[sceneIx++ % scenes.length];
+  $('mbapp').textContent = scene.app; $('kntitle').textContent = scene.title;
   $('doc').classList.remove('on'); $('toast').classList.remove('on'); $('sub').innerHTML = '';
-  showSlide('intro'); setState('recording');
-  await sleep(700);
-  for (const step of script) {
+  showSlide(scene.script[0].slide); setState('recording');
+  await sleep(1200);
+  for (const step of scene.script) {
     if (g !== gen) return;
     if (step.slide) showSlide(step.slide);
     if (step.pause) {
       setState('paused'); $('sub').innerHTML = '<span class="who">(break)</span>';
       events.push({ kind: 'pause', t });
-      await sleep(900);
+      await sleep(1400);
       await typeNote(step.pause, g);
-      await sleep(1100);
+      await sleep(1800);
       continue;
     }
     const sentence = say(step.say, g);
     if (step.note) {
-      await sleep(step.early ? 450 : 1100); // start typing partway through, like a real student
+      await sleep(step.early ? 900 : 2000); // start typing partway through, like a real person
       await typeNote(step.note, g);
     }
     await sentence;
-    await sleep(reduce ? 200 : 700);
+    await sleep(reduce ? 200 : 1400);
   }
   while (user && g === gen) await sleep(300); // let a visitor finish their note
   if (g !== gen) return;
   $('sub').innerHTML = '';
   setState('transcribing', '<b>Transcribing</b> on this Mac');
-  await sleep(2000);
+  await sleep(2600);
   if (g !== gen) return;
   renderMd();
   $('doc').classList.add('on');
   setState('done', '<b>Done.</b> session.md');
   await sleep(900);
   $('toast').classList.add('on');
-  await sleep(7500);
+  await sleep(9000);
   if (g === gen) run();
 }
 

@@ -11,7 +11,7 @@ final class Session {
 
   var state: State = .idle {
     didSet {
-      // Keeps a long lecture (and its transcription) going when the Mac sits idle.
+      // Keeps a long recording (and its transcription) going when the Mac sits idle.
       if state == .idle {
         if let awake { ProcessInfo.processInfo.endActivity(awake) }
         awake = nil
