@@ -16,6 +16,18 @@ struct NotesThingApp: App {
       precondition(Shortcut(e) == nil, "shift-only shortcuts must be rejected")
       precondition(s.keyEquivalent == KeyEquivalent("n") && s.eventModifiers == SwiftUI.EventModifiers([.command, .control, .shift]), "menu shortcut")
       precondition(Shortcut(keyCode: 122, modifiers: .option, key: "F1").keyEquivalent == KeyEquivalent(Character(UnicodeScalar(NSF1FunctionKey)!)), "F-key")
+      // Moving the sessions folder: everything arrives, the old folder goes, and a folder inside the old one is refused.
+      let fm = FileManager.default, saved = UserDefaults.standard.string(forKey: "sessionsFolder")
+      let tmp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString), from = tmp.appendingPathComponent("a"), to = tmp.appendingPathComponent("b")
+      try! fm.createDirectory(at: from.appendingPathComponent("20260101-0900"), withIntermediateDirectories: true)
+      try! fm.createDirectory(at: to, withIntermediateDirectories: true)
+      UserDefaults.standard.set(from.path, forKey: "sessionsFolder")
+      try! Session.moveRoot(to: to)
+      precondition(fm.fileExists(atPath: to.appendingPathComponent("20260101-0900").path) && !fm.fileExists(atPath: from.path), "move sessions")
+      precondition(Session.root.standardizedFileURL == to.standardizedFileURL && !Session.rootMissing, "repoint")
+      precondition((try? Session.moveRoot(to: to.appendingPathComponent("inner"))) == nil, "refuse a folder inside the old one")
+      UserDefaults.standard.set(saved, forKey: "sessionsFolder")
+      try? fm.removeItem(at: tmp)
       exit(0)
     }
     if let i = CommandLine.arguments.firstIndex(of: "--finish"), i + 1 < CommandLine.arguments.count {
@@ -58,10 +70,7 @@ struct Menu: View {
     if let id = session.lastID {
       Button("Copy /notes \(id)") { session.copyNotesCommand() }
     }
-    Button("Open Sessions Folder") {
-      try? FileManager.default.createDirectory(at: Session.root, withIntermediateDirectories: true)
-      NSWorkspace.shared.open(Session.root)
-    }
+    Button("Open Sessions Folder") { Session.openRoot() }
     let updater = Updater.shared
     if let v = updater.available {
       Button("Update to \(v)…") { updater.check() }
@@ -100,8 +109,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     HotKeys.bind(.toggle, Prefs.shared[.toggle]) { [session] in session.toggle() }
     HotKeys.bind(.note, Prefs.shared[.note]) { [weak self] in self?.notePanel.show() }
     Self.updateDockIcon()
+    Session.rememberRoot()
     // Hex's onboarding: open the window on every launch except a login launch, so permissions and the model are up front.
-    if !Self.launchedAtLogin() { window.show() }
+    // The very first launch opens on Get Started instead.
+    if !Self.launchedAtLogin() {
+      let firstLaunch = !UserDefaults.standard.bool(forKey: "seenGetStarted")
+      UserDefaults.standard.set(true, forKey: "seenGetStarted")
+      window.show(firstLaunch ? .start : .settings)
+    }
   }
 
   static func updateDockIcon() {

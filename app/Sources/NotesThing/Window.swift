@@ -4,9 +4,9 @@ import Carbon.HIToolbox
 import ServiceManagement
 import SwiftUI
 
-// The app window, laid out like Hex's: a sidebar with Settings, History and About.
+// The app window, laid out like Hex's: a sidebar with Get Started, Settings, History and About.
 
-enum Tab: Hashable { case settings, history, about }
+enum Tab: Hashable { case start, settings, history, about }
 
 @MainActor @Observable
 final class WindowState {
@@ -44,6 +44,7 @@ struct AppView: View {
   var body: some View {
     NavigationSplitView {
       List(selection: $state.tab) {
+        Label("Get Started", systemImage: "sparkles").tag(Tab.start)
         Label("Settings", systemImage: "gearshape").tag(Tab.settings)
         Label("History", systemImage: "clock").tag(Tab.history)
         Label("About", systemImage: "info.circle").tag(Tab.about)
@@ -51,11 +52,128 @@ struct AppView: View {
       .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
     } detail: {
       switch state.tab {
+      case .start: GetStartedView(session: session).navigationTitle("Get Started")
       case .settings: SettingsView(session: session).navigationTitle("Settings")
       case .history: HistoryView(session: session).navigationTitle("History")
       case .about: AboutView().navigationTitle("About")
       }
     }
+  }
+}
+
+// MARK: Get Started
+
+/// The three steps, plus the `/notes` command that makes the copied id useful.
+struct GetStartedView: View {
+  var session: Session
+  @State private var skillInstalled = NotesSkill.installed
+  @State private var skillError: String?
+  private var keys: Prefs { .shared }
+
+  var body: some View {
+    Form {
+      Section {
+        Step(n: 1, title: "Start recording", keys: keys[.toggle].display,
+             text: "Works from any app. A red capsule at the top of the screen means it's listening; press again to pause.")
+        Step(n: 2, title: "Jot a note", keys: keys[.note].display,
+             text: "Type, then Enter. The note is timed from your first keystroke, so it lands next to what was being said.")
+        Step(n: 3, title: "Stop & Transcribe", keys: nil,
+             text: "From the menu bar icon. Your Mac writes ~/Sessions/<id>/session.md: the transcript with every note in place.")
+      } header: {
+        Text("Record anything: a meeting, a lecture, a call, a video")
+      }
+
+      if !session.modelReady {
+        Section {
+          ModelSection(session: session)
+        } header: {
+          Text("Speech Model")
+        } footer: {
+          Text("Downloads once. You can record while it finishes.").font(.footnote).foregroundStyle(.secondary)
+        }
+      }
+
+      Section {
+        HStack(spacing: 12) {
+          Image(systemName: "terminal").font(.title3).foregroundStyle(Color.accentColor).frame(width: 28)
+          VStack(alignment: .leading, spacing: 3) {
+            Text("/notes for your AI agent").font(.body.weight(.medium))
+            Text("Summarises the session and explains each note in context.").font(.caption).foregroundStyle(.secondary)
+            Text(NotesSkill.command).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+            if let skillError { Text(skillError).font(.caption).foregroundStyle(.red) }
+          }
+          Spacer()
+          if skillInstalled {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+          } else {
+            Button("Install") {
+              do { try NotesSkill.install(); skillError = nil } catch { skillError = error.localizedDescription }
+            }
+            .buttonStyle(.bordered)
+            .help("Opens Terminal and runs the command")
+          }
+        }
+      } header: {
+        Text("Ask your AI about it")
+      } footer: {
+        Text("Install opens Terminal and runs the command (needs Node.js). After transcribing, /notes <id> is copied to your clipboard: paste it into Claude Code, Codex, Cursor or any agent you installed it for. A chat assistant instead? Give it the session.md file.")
+          .font(.footnote).foregroundStyle(.secondary)
+      }
+    }
+    .formStyle(.grouped)
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      skillInstalled = NotesSkill.installed // back from Terminal
+    }
+  }
+
+  private struct Step: View {
+    let n: Int
+    let title: String
+    let keys: String?
+    let text: String
+
+    var body: some View {
+      HStack(alignment: .firstTextBaseline, spacing: 12) {
+        Text("\(n)").font(.callout.weight(.semibold)).foregroundStyle(.secondary).frame(width: 28)
+        VStack(alignment: .leading, spacing: 3) {
+          HStack {
+            Text(title).font(.body.weight(.medium))
+            if let keys {
+              Text(keys).font(.callout.weight(.semibold)).padding(.horizontal, 6).padding(.vertical, 1)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
+            }
+          }
+          Text(text).font(.caption).foregroundStyle(.secondary)
+        }
+      }
+      .padding(.vertical, 2)
+    }
+  }
+}
+
+/// The `/notes` skill lives in this repo (`skills/notes/SKILL.md`). Installing it goes through
+/// `npx skills`, which puts it in every agent the user has (Claude Code, Codex, Cursor…).
+enum NotesSkill {
+  static let command = "npx skills add yoelgal/notes-thing --skill notes -g"
+
+  static var installed: Bool {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    return [".agents/skills/notes/SKILL.md", ".claude/skills/notes/SKILL.md"]
+      .contains { FileManager.default.fileExists(atPath: home.appendingPathComponent($0).path) }
+  }
+
+  /// Runs the install in Terminal: a `.command` file opens there without asking for Automation access.
+  static func install() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("install-notes-skill.command")
+    let script = """
+      #!/bin/zsh -l
+      command -v npx >/dev/null || { echo "This needs Node.js (it provides npx): https://nodejs.org"; exit 1; }
+      \(command)
+      echo; echo "Done. Paste /notes <id> into your agent after a session."
+      """
+    try script.write(to: url, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    NSWorkspace.shared.open(url)
   }
 }
 
@@ -70,6 +188,9 @@ struct SettingsView: View {
   @State private var recording: Action?
   @AppStorage("showDockIcon") private var showDockIcon = true
   @AppStorage("preventSleep") private var preventSleep = true
+  @State private var rootPath = Session.root.path
+  @State private var rootMissing = Session.rootMissing
+  @State private var rootError: String?
 
   var body: some View {
     Form {
@@ -135,14 +256,25 @@ struct SettingsView: View {
           Image(systemName: "zzz")
         }
         Label {
-          HStack {
-            Text("Sessions Folder")
-            Spacer()
-            Button("~/Sessions") {
-              try? FileManager.default.createDirectory(at: Session.root, withIntermediateDirectories: true)
-              NSWorkspace.shared.open(Session.root)
+          VStack(alignment: .leading, spacing: 4) {
+            HStack {
+              Text("Sessions Folder")
+              Spacer()
+              Button((rootPath as NSString).abbreviatingWithTildeInPath) { Session.openRoot() }
+                .buttonStyle(.link)
+                .disabled(rootMissing)
+              Button("Change…", action: chooseRoot)
+                .disabled(session.state != .idle)
+                .help(session.state != .idle ? "Finish the current session first" : "Move your sessions to another folder")
             }
-            .buttonStyle(.link)
+            if rootMissing {
+              Text("Not found. If you moved it in Finder, use Change… to choose where it is now.")
+                .font(.caption).foregroundStyle(.orange)
+            } else {
+              Text("Use Change… to move it. Moving or renaming it in Finder breaks History and /notes.")
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            if let rootError { Text(rootError).font(.caption).foregroundStyle(.red) }
           }
         } icon: {
           Image(systemName: "folder")
@@ -152,7 +284,28 @@ struct SettingsView: View {
     .formStyle(.grouped)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       mic = AVCaptureDevice.authorizationStatus(for: .audio)
+      rootMissing = Session.rootMissing
     }
+  }
+
+  /// Moves the sessions into the chosen folder, or just repoints if the old one has gone missing.
+  private func chooseRoot() {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.canCreateDirectories = true
+    panel.prompt = "Use Folder"
+    panel.message = rootMissing ? "Choose where your sessions folder is now." : "Choose a folder. Your sessions will be moved into it."
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    do {
+      try Session.moveRoot(to: url)
+      rootError = nil
+    } catch {
+      rootError = error.localizedDescription
+    }
+    rootPath = Session.root.path
+    rootMissing = Session.rootMissing
+    History.shared.reload(excluding: session.activeID)
   }
 }
 
