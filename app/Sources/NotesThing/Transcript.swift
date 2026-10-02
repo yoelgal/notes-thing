@@ -1,4 +1,4 @@
-import Foundation
+import AVFoundation
 
 /// One line of `events.jsonl`. `t` is recording time: it only advances while recording,
 /// so it matches positions in the audio file (and the transcript's token timings).
@@ -43,6 +43,29 @@ enum Transcript {
       t.speaker = names[seg.id]
       return t
     }
+  }
+
+  /// Maps a piece's speakers (id → voice embedding) to speakers from earlier pieces: the most
+  /// similar voice if it's close enough, else a new speaker. `voices` holds each speaker's
+  /// running sum of unit embeddings.
+  static func match(_ piece: [String: [Float]], voices: inout [[Float]], threshold: Float = 0.4) -> [String: String] {
+    func unit(_ v: [Float]) -> [Float] {
+      let n = v.reduce(0) { $0 + $1 * $1 }.squareRoot()
+      return n > 0 ? v.map { $0 / n } : v
+    }
+    func cos(_ a: [Float], _ b: [Float]) -> Float { zip(unit(a), b).reduce(0) { $0 + $1.0 * $1.1 } }
+    var ids: [String: String] = [:]
+    for (id, raw) in piece.sorted(by: { $0.key < $1.key }) {
+      let v = unit(raw)
+      if let i = voices.indices.max(by: { cos(voices[$0], v) < cos(voices[$1], v) }), cos(voices[i], v) >= threshold {
+        voices[i] = zip(voices[i], v).map(+)
+        ids[id] = "V\(i)"
+      } else {
+        voices.append(v)
+        ids[id] = "V\(voices.count - 1)"
+      }
+    }
+    return ids
   }
 
   /// Groups tokens into sentences, breaking on . ? ! and at every pause so a pause marker
@@ -160,6 +183,30 @@ enum Transcript {
     assert(named.contains("[00:07] **Speaker 1:** next."), named)
     let solo = assignSpeakers(tokens, segments: [(0, 9, "S1")])
     assert(!render(id: "x", events: events, tokens: solo).contains("**Speaker"), "one speaker: no labels")
+
+    // Live pieces: speakers matched across pieces by voice, cut at the quietest spot, CAF read back.
+    var voices: [[Float]] = []
+    let p1 = match(["S1": [1, 0], "S2": [0, 1]], voices: &voices)
+    let p2 = match(["S1": [0.1, 1], "S2": [1, 0.1]], voices: &voices)
+    assert(p1["S1"] == p2["S2"] && p1["S2"] == p2["S1"] && voices.count == 2, "\(p1) \(p2)")
+    _ = match(["S1": [-1, 0]], voices: &voices)
+    assert(voices.count == 3, "a new voice is a new speaker")
+    let r = Live.rate
+    var audio = [Float](repeating: 0.5, count: 10 * r)
+    audio.replaceSubrange(7 * r..<7 * r + r / 10, with: repeatElement(0, count: r / 10))
+    assert(Live.quietest(audio[...]) == 7 * r + r / 20)
+    let caf = FileManager.default.temporaryDirectory.appendingPathComponent("selfcheck.caf")
+    do {
+      let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: r, AVNumberOfChannelsKey: 1,
+                                     AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false]
+      let f = try! AVAudioFile(forWriting: caf, settings: settings, commonFormat: .pcmFormatInt16, interleaved: true)
+      let b = AVAudioPCMBuffer(pcmFormat: f.processingFormat, frameCapacity: 100)!
+      b.frameLength = 100
+      for i in 0..<100 { b.int16ChannelData![0][i] = Int16(i * 100) }
+      try! f.write(from: b)
+    }
+    let read = try! Live.samples(caf, from: 10)
+    assert(read.count == 90 && read[0] == 1000 / 32768, "\(read.prefix(3))")
     print("selfcheck ok")
   }
 }
