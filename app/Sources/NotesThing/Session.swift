@@ -28,6 +28,9 @@ final class Session {
   private var recorder: Recorder?
   private var awake: NSObjectProtocol?
   private var meterTimer: Timer?
+  private var live: Live?
+  private var liveTimer: Timer?
+  private var liveQueue: Task<Live.Result?, Never>?
   private var dir: URL!
   private var id = ""
   private var events: [Event] = []
@@ -92,6 +95,11 @@ final class Session {
         self?.alert("Recording stopped: \(error) The audio up to now is saved.")
       }
     } catch { return alert("Couldn't start recording: \(error.localizedDescription)") }
+    live = Live(caf: dir.appendingPathComponent("audio.caf"), asr: asr)
+    liveQueue = nil
+    liveTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+      MainActor.assumeIsolated { _ = self?.queueLive() }
+    }
     events = []
     recordedBefore = 0
     runStart = Date()
@@ -137,14 +145,18 @@ final class Session {
     let recorder = recorder
     self.recorder = nil
     meterTimer?.invalidate()
+    liveTimer?.invalidate()
     state = .transcribing
     let (dir, id, events) = (dir!, id, events)
     Task {
       await recorder?.stop()
-      await Self.finish(dir: dir, id: id, events: events, asr: asr)
+      let done = await queueLive(final: true).value
+      live = nil
+      let ok = await Self.finish(dir: dir, id: id, events: events, asr: asr, live: done)
       lastID = id
       copyNotesCommand()
       state = .idle
+      await Self.compress(dir, keepCaf: !ok)
     }
   }
 
@@ -162,6 +174,17 @@ final class Session {
   }
 
   // MARK: Private
+
+  /// Queues a step of the live transcription after any still running.
+  private func queueLive(final: Bool = false) -> Task<Live.Result?, Never> {
+    let (previous, live) = (liveQueue, live)
+    let task = Task {
+      _ = await previous?.value
+      return await live?.step(final: final)
+    }
+    liveQueue = task
+    return task
+  }
 
   private func log(_ kind: Event.Kind, t: TimeInterval? = nil, text: String? = nil, paused: Bool? = nil) {
     let e = Event(kind: kind, t: t ?? self.t, wall: Date(), text: text, paused: paused)
@@ -187,44 +210,59 @@ final class Session {
     let text = (try? String(contentsOf: dir.appendingPathComponent("events.jsonl"), encoding: .utf8)) ?? ""
     let events = text.split(separator: "\n").compactMap { try? dec.decode(Event.self, from: Data($0.utf8)) }
     let model = UserDefaults.standard.string(forKey: "model").flatMap(TranscriptionModel.init) ?? .parakeetV2
-    await finish(dir: dir, id: dir.lastPathComponent, events: events, asr: load(model))
+    let ok = await finish(dir: dir, id: dir.lastPathComponent, events: events, asr: load(model))
+    await compress(dir, keepCaf: !ok)
   }
 
-  private nonisolated static func finish(dir: URL, id: String, events: [Event], asr: Task<AsrManager, Error>) async {
+  /// Writes session.md, from `live`'s transcript if it has one, else by transcribing the whole file.
+  /// Returns false if transcription failed.
+  private nonisolated static func finish(dir: URL, id: String, events: [Event], asr: Task<AsrManager, Error>, live: Live.Result? = nil) async -> Bool {
     let caf = dir.appendingPathComponent("audio.caf")
     var tokens: [Token] = []
+    var segments: [Live.Segment] = []
     var failure: String?
-    do {
-      let manager = try await asr.value
-      var state = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
-      let result = try await manager.transcribe(caf, decoderState: &state)
-      tokens = (result.tokenTimings ?? []).map { Token(text: $0.token, start: $0.startTime) }
-    } catch {
-      failure = error.localizedDescription
+    if let live {
+      (tokens, segments) = live
+    } else {
+      do {
+        let manager = try await asr.value
+        var state = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
+        let result = try await manager.transcribe(caf, decoderState: &state)
+        tokens = (result.tokenTimings ?? []).map { Token(text: $0.token, start: $0.startTime) }
+      } catch {
+        failure = error.localizedDescription
+      }
+      // Who spoke when. Best effort: if it fails, the transcript just has no speaker labels.
+      if failure == nil, let s = try? await diarize(caf) { segments = s }
     }
-    // Who spoke when. Best effort: if it fails, the transcript just has no speaker labels.
-    if failure == nil, let segments = try? await diarize(caf) {
-      tokens = Transcript.assignSpeakers(tokens, segments: segments)
-    }
+    tokens = Transcript.assignSpeakers(tokens, segments: segments)
     let names = Speakers.load(dir)
     let md = Transcript.render(id: id, events: events, tokens: tokens, names: names, error: failure)
     let labels = Set(tokens.compactMap(\.speaker))
     if labels.count > 1 { Speakers.save(dir, labels.reduce(into: names) { $0[$1] = $0[$1] ?? $1 }) }
     try? md.write(to: dir.appendingPathComponent("session.md"), atomically: true, encoding: .utf8)
+    return failure == nil
+  }
 
-    // Shrink audio to AAC with the built-in afconvert; keep the CAF if that fails or transcription did.
-    let m4a = dir.appendingPathComponent("audio.m4a")
+  /// Shrinks the audio to AAC with the built-in afconvert, keeping the CAF if that fails (or `keepCaf`).
+  /// Converts under a temporary name so History never plays a half-written m4a.
+  private nonisolated static func compress(_ dir: URL, keepCaf: Bool) async {
+    let caf = dir.appendingPathComponent("audio.caf")
+    let tmp = dir.appendingPathComponent("audio-partial.m4a")
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/usr/bin/afconvert")
-    p.arguments = ["-f", "m4af", "-d", "aac", caf.path, m4a.path]
-    if (try? p.run()) != nil {
-      p.waitUntilExit()
-      if p.terminationStatus == 0, failure == nil { try? FileManager.default.removeItem(at: caf) }
-    }
+    p.arguments = ["-f", "m4af", "-d", "aac", caf.path, tmp.path]
+    guard (try? p.run()) != nil else { return }
+    p.waitUntilExit()
+    guard p.terminationStatus == 0 else { return }
+    let m4a = dir.appendingPathComponent("audio.m4a")
+    try? FileManager.default.removeItem(at: m4a)
+    guard (try? FileManager.default.moveItem(at: tmp, to: m4a)) != nil else { return }
+    if !keepCaf { try? FileManager.default.removeItem(at: caf) }
   }
 
   /// Offline diarizer (pyannote + WeSpeaker + VBx clustering); downloads its models on first use.
-  private nonisolated static func diarize(_ audio: URL) async throws -> [(start: TimeInterval, end: TimeInterval, id: String)] {
+  private nonisolated static func diarize(_ audio: URL) async throws -> [Live.Segment] {
     let diarizer = OfflineDiarizerManager()
     try await diarizer.prepareModels()
     return try await diarizer.process(audio).segments.map {

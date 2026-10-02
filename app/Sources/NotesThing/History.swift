@@ -11,7 +11,10 @@ struct SessionRecord: Identifiable {
   let notes: [String]
   /// The first few transcript sentences; nil if session.md hasn't been written yet.
   let preview: String?
-  let audio: URL?
+  /// Looked up when needed: compression swaps audio.caf for audio.m4a just after a session ends.
+  var audio: URL? {
+    ["audio.m4a", "audio.caf"].map { dir.appendingPathComponent($0) }.first { FileManager.default.fileExists(atPath: $0.path) }
+  }
   /// speakers.json: "Speaker N" → the name shown in session.md. Empty for one-speaker sessions.
   let speakers: [String: String]
 
@@ -36,8 +39,6 @@ struct SessionRecord: Identifiable {
         .map { $0.replacingOccurrences(of: #"^\*\*[^*]+:\*\* "#, with: "", options: .regularExpression) }
       return sentences.isEmpty ? "No speech was transcribed." : sentences.prefix(3).joined(separator: " ")
     }
-    audio = ["audio.m4a", "audio.caf"].map { dir.appendingPathComponent($0) }
-      .first { FileManager.default.fileExists(atPath: $0.path) }
     speakers = Speakers.load(dir)
   }
 }
