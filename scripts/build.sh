@@ -35,6 +35,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>SUPublicEDKey</key><string>OIXJMQORA3X2MJW+sf9lDwE9vwV1tKCvIhDqkdyjruE=</string>
   <key>SUEnableAutomaticChecks</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Records audio so it can be transcribed on this Mac.</string>
+  <key>NSAudioCaptureUsageDescription</key><string>Records what your Mac plays, like the other side of a call, so it can be transcribed on this Mac.</string>
 </dict></plist>
 PLIST
 
