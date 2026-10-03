@@ -6,7 +6,7 @@ let package = Package(
   platforms: [.macOS(.v14)],
   dependencies: [
     // No NeMo text-normalization engine: it's for TTS, and its prebuilt Rust library fails to link on Xcode 26.6.
-    .package(url: "https://github.com/FluidInference/FluidAudio", from: "0.15.5", traits: []),
+    .package(url: "https://github.com/FluidInference/FluidAudio", from: "0.17.3", traits: []),
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.0"),
   ],
   targets: [

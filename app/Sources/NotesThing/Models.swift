@@ -8,11 +8,12 @@ import SwiftUI
 /// add it if Parakeet ever falls short on a language.
 enum TranscriptionModel: String, CaseIterable, Identifiable {
   case parakeetV2 = "parakeet-tdt-0.6b-v2"
-  case parakeetV3 = "parakeet-tdt-0.6b-v3"
+  /// Replaced v3 (more accurate, same speed); keeps v3's key so a saved v3 selection carries over.
+  case parakeetUltra = "parakeet-tdt-0.6b-v3"
 
   var id: String { rawValue }
-  var version: AsrModelVersion { self == .parakeetV2 ? .v2 : .v3 }
-  var displayName: String { self == .parakeetV2 ? "Parakeet TDT v2" : "Parakeet TDT v3" }
+  var version: AsrModelVersion { self == .parakeetV2 ? .v2 : .ultra }
+  var displayName: String { self == .parakeetV2 ? "Parakeet TDT v2" : "Parakeet Ultra" }
   var size: String { self == .parakeetV2 ? "English" : "Multilingual" }
   var storageSize: String { "650 MB" }
   var accuracyStars: Int { 5 }
@@ -38,6 +39,8 @@ final class Models {
 
   private init() {
     selected = UserDefaults.standard.string(forKey: "model").flatMap(TranscriptionModel.init) ?? .parakeetV2
+    // v3 is no longer offered; free its download.
+    try? FileManager.default.removeItem(at: AsrModels.defaultCacheDirectory(for: .v3))
     refresh()
   }
 
