@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import CoreAudio
 import FluidAudio
 import Observation
 
@@ -196,7 +197,7 @@ final class Session {
     state = .transcribing
     let (dir, id, events) = (dir!, id, events)
     Task {
-      await recorder?.stop()
+      recorder?.stop()
       let done = await queueLive(final: true).value
       live = nil
       let ok = await Self.finish(dir: dir, id: id, events: events, asr: asr, live: done)
@@ -211,7 +212,7 @@ final class Session {
   func stopRecorderForQuit() {
     guard state == .recording || state == .paused else { return }
     log(.stop)
-    recorder?.stopNow()
+    recorder?.stop()
   }
 
   func copyNotesCommand() {
@@ -324,15 +325,14 @@ final class Session {
   }
 }
 
-/// Records one mic to a file. Unlike AVAudioRecorder, AVCaptureSession can use any input
-/// without changing the system default.
-@MainActor
-final class Recorder: NSObject, AVCaptureFileOutputRecordingDelegate {
-  private let capture = AVCaptureSession()
-  private let output = AVCaptureAudioFileOutput()
-  private let failed: (String) -> Void
-  private var stopping: CheckedContinuation<Void, Never>?
-  private var done = false
+
+/// Records the mic, plus everything the Mac plays (the other side of a call, a video) when "systemAudio"
+/// is on, mixed into one 16 kHz mono CAF. Both come through one private aggregate device, so they share
+/// a clock and stay in sync however long the session runs.
+final class Recorder: @unchecked Sendable {
+  /// Process taps need macOS 14.2.
+  static var systemAudioSupported: Bool { if #available(macOS 14.2, *) { true } else { false } }
+  static var systemAudio: Bool { systemAudioSupported && UserDefaults.standard.object(forKey: "systemAudio") as? Bool ?? true }
 
   /// The mic picked in Settings, or the system default if none was picked or it's unplugged.
   static var device: AVCaptureDevice? {
@@ -343,65 +343,153 @@ final class Recorder: NSObject, AVCaptureFileOutputRecordingDelegate {
     AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified).devices
   }
 
-  /// `failed` is called if recording ends on its own, e.g. the mic was unplugged.
-  init(url: URL, failed: @escaping (String) -> Void) throws {
-    self.failed = failed
-    super.init()
-    guard let device = Self.device else {
-      throw NSError(domain: "NotesThing", code: 1, userInfo: [NSLocalizedDescriptionKey: "No microphone found."])
-    }
-    let input = try AVCaptureDeviceInput(device: device)
-    guard capture.canAddInput(input), capture.canAddOutput(output) else {
-      throw NSError(domain: "NotesThing", code: 2, userInfo: [NSLocalizedDescriptionKey: "\(device.localizedName) can't be recorded."])
-    }
-    capture.addInput(input)
-    capture.addOutput(output)
-    // PCM in CAF survives a crash (unlike m4a, which is unreadable until finalised).
-    output.audioSettings = [
-      AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000, AVNumberOfChannelsKey: 1,
-      AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
-      AVLinearPCMIsNonInterleaved: false,
+  /// 0…1 loudness of the mix.
+  private(set) var level: Double = 0 // ponytail: written on the IO queue, read on main; a stale meter is harmless
+  private let queue = DispatchQueue(label: "com.yoelgal.notesthing.recorder", qos: .userInitiated)
+  private var tap = AudioObjectID(kAudioObjectUnknown)
+  private var aggregate = AudioObjectID(kAudioObjectUnknown)
+  private var proc: AudioDeviceIOProcID?
+  private var micID = AudioObjectID(kAudioObjectUnknown)
+  private var unplugged: AudioObjectPropertyListenerBlock?
+  // Only touched on `queue`.
+  private var file: AVAudioFile?
+  private var converter: AVAudioConverter!
+  private var paused = false
+
+  /// `failed` is called if recording ends on its own: the mic was unplugged.
+  init(url: URL, failed: @escaping @MainActor (String) -> Void) throws {
+    guard let mic = Self.device?.uniqueID else { throw Self.error("No microphone found.") }
+    var desc: [String: Any] = [
+      kAudioAggregateDeviceNameKey: "Notes Thing",
+      kAudioAggregateDeviceUIDKey: UUID().uuidString,
+      kAudioAggregateDeviceMainSubDeviceKey: mic,
+      kAudioAggregateDeviceIsPrivateKey: true,
+      kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: mic]],
     ]
-    capture.startRunning() // ponytail: blocks the main thread for a moment at start; move off-main if it's noticeable
-    output.startRecording(to: url, outputFileType: .caf, recordingDelegate: self)
-  }
-
-  /// 0…1 loudness, like AVAudioRecorder's metering.
-  var level: Double {
-    guard let db = output.connections.first?.audioChannels.first?.averagePowerLevel else { return 0 }
-    return pow(10, Double(db) / 20)
-  }
-
-  func pause() { output.pauseRecording() }
-  func resume() { output.resumeRecording() }
-
-  /// Returns once the file is finalised.
-  func stop() async {
-    if !done { await withCheckedContinuation { stopping = $0; output.stopRecording() } }
-    capture.stopRunning()
-  }
-
-  /// Quitting: finalise the file before the process exits, pumping the run loop for the callback.
-  func stopNow() {
-    output.stopRecording()
-    let deadline = Date() + 3
-    while !done, Date() < deadline { RunLoop.current.run(until: Date() + 0.05) }
-    capture.stopRunning()
-  }
-
-  nonisolated func fileOutput(_: AVCaptureFileOutput, didFinishRecordingTo _: URL, from _: [AVCaptureConnection], error: Error?) {
-    let ok = (error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool ?? (error == nil)
-    let message = ok ? nil : error?.localizedDescription
-    DispatchQueue.main.async {
-      MainActor.assumeIsolated {
-        self.done = true
-        if let stopping = self.stopping {
-          stopping.resume()
-          self.stopping = nil
-        } else if let message {
-          self.failed(message)
-        }
+    if Self.systemAudio, #available(macOS 14.2, *) {
+      // macOS asks for "System Audio Recording" the first time; if refused, the tap is silent and only the mic records.
+      let t = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+      t.isPrivate = true
+      try Self.check(AudioHardwareCreateProcessTap(t, &tap), "Couldn't record system audio")
+      desc[kAudioAggregateDeviceTapListKey] = [[kAudioSubTapUIDKey: t.uuid.uuidString, kAudioSubTapDriftCompensationKey: true]]
+      desc[kAudioAggregateDeviceTapAutoStartKey] = true
+    }
+    do {
+      try Self.check(AudioHardwareCreateAggregateDevice(desc as CFDictionary, &aggregate), "Couldn't open the microphone")
+      var rate = Float64(0)
+      try Self.check(Self.get(aggregate, kAudioDevicePropertyNominalSampleRate, &rate), "Couldn't read the sample rate")
+      // PCM in CAF survives a crash (unlike m4a, which is unreadable until finalised).
+      let file = try AVAudioFile(forWriting: url, settings: [
+        AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: Live.rate, AVNumberOfChannelsKey: 1,
+        AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+        AVLinearPCMIsNonInterleaved: false,
+      ], commonFormat: .pcmFormatFloat32, interleaved: false)
+      self.file = file
+      converter = AVAudioConverter(from: AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1)!, to: file.processingFormat)
+      try Self.check(AudioDeviceCreateIOProcIDWithBlock(&proc, aggregate, queue) { [unowned self] _, input, _, _, _ in
+        write(input)
+      }, "Couldn't open the microphone")
+      try Self.check(AudioDeviceStart(aggregate, proc), "Couldn't start the microphone")
+    } catch {
+      stop()
+      throw error
+    }
+    // Unplugging the mic stops the recording, as with any other input.
+    var uid = mic as CFString
+    var size = UInt32(MemoryLayout<AudioObjectID>.size)
+    var address = Self.address(kAudioHardwarePropertyTranslateUIDToDevice)
+    AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, UInt32(MemoryLayout<CFString>.size), &uid, &size, &micID)
+    let unplugged: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+      guard let self else { return }
+      var alive = UInt32(1)
+      guard Self.get(micID, kAudioDevicePropertyDeviceIsAlive, &alive) != noErr || alive == 0 else { return }
+      DispatchQueue.main.async {
+        guard self.aggregate != kAudioObjectUnknown else { return }
+        self.stop()
+        failed("The microphone was disconnected.")
       }
     }
+    self.unplugged = unplugged
+    address = Self.address(kAudioDevicePropertyDeviceIsAlive)
+    AudioObjectAddPropertyListenerBlock(micID, &address, queue, unplugged)
+  }
+
+  func pause() { queue.async { self.paused = true } }
+  func resume() { queue.async { self.paused = false } }
+
+  /// Finalises the file. Safe to call twice.
+  func stop() {
+    if let unplugged {
+      var address = Self.address(kAudioDevicePropertyDeviceIsAlive)
+      AudioObjectRemovePropertyListenerBlock(micID, &address, queue, unplugged)
+      self.unplugged = nil
+    }
+    if let proc {
+      AudioDeviceStop(aggregate, proc)
+      AudioDeviceDestroyIOProcID(aggregate, proc)
+      self.proc = nil
+    }
+    queue.sync { file = nil } // after any write in flight; closing the file finalises it
+    if aggregate != kAudioObjectUnknown { AudioHardwareDestroyAggregateDevice(aggregate) }
+    if tap != kAudioObjectUnknown, #available(macOS 14.2, *) { AudioHardwareDestroyProcessTap(tap) }
+    aggregate = AudioObjectID(kAudioObjectUnknown)
+    tap = AudioObjectID(kAudioObjectUnknown)
+    level = 0
+  }
+
+  /// Mixes every input stream (the mic's, then the tap's) down to mono and appends it at 16 kHz.
+  private func write(_ input: UnsafePointer<AudioBufferList>) {
+    guard let file, !paused else { level = 0; return }
+    let streams = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
+    guard let first = streams.first, first.mNumberChannels > 0 else { return }
+    let frames = Int(first.mDataByteSize) / 4 / Int(first.mNumberChannels)
+    guard frames > 0, let mono = AVAudioPCMBuffer(pcmFormat: converter.inputFormat, frameCapacity: AVAudioFrameCount(frames)) else { return }
+    mono.frameLength = AVAudioFrameCount(frames)
+    let out = mono.floatChannelData![0]
+    out.initialize(repeating: 0, count: frames)
+    for s in streams {
+      guard let data = s.mData?.assumingMemoryBound(to: Float.self), s.mNumberChannels > 0 else { continue }
+      let ch = Int(s.mNumberChannels)
+      for i in 0..<min(frames, Int(s.mDataByteSize) / 4 / ch) {
+        var sum: Float = 0
+        for c in 0..<ch { sum += data[i * ch + c] }
+        out[i] += sum / Float(ch)
+      }
+    }
+    var power: Float = 0
+    for i in 0..<frames {
+      out[i] = max(-1, min(1, out[i]))
+      power += out[i] * out[i]
+    }
+    level = Double((power / Float(frames)).squareRoot())
+    let capacity = AVAudioFrameCount(Double(frames) * converter.outputFormat.sampleRate / converter.inputFormat.sampleRate) + 32
+    guard let resampled = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: capacity) else { return }
+    var given = false
+    converter.convert(to: resampled, error: nil) { _, status in
+      if given { status.pointee = .noDataNow; return nil }
+      given = true
+      status.pointee = .haveData
+      return mono
+    }
+    try? file.write(from: resampled)
+  }
+
+  private static func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
+    AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+  }
+
+  private static func get<T>(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector, _ value: inout T) -> OSStatus {
+    var address = address(selector)
+    var size = UInt32(MemoryLayout<T>.size)
+    return AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value)
+  }
+
+  private static func check(_ status: OSStatus, _ message: String) throws {
+    guard status != noErr else { return }
+    throw error("\(message) (error \(status)).")
+  }
+
+  private static func error(_ message: String) -> NSError {
+    NSError(domain: "NotesThing", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
   }
 }

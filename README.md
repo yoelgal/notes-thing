@@ -48,6 +48,7 @@ Quit from the menu, then drag **Notes Thing** from Applications to the Trash. Yo
 
 ## Use
 - `⌃⌥P`: start a session / pause / resume
+- Calls and videos: Notes Thing records what your Mac plays as well as your mic (macOS 14.2+), so the other side of a call is transcribed even with headphones on. macOS asks for **System Audio Recording** permission the first time. Turn it off in **Settings → Audio Input**.
 - `⌃⌥N`: note field (Enter saves, Esc cancels). A note is timed from its first keystroke.
 - Change either shortcut, or the transcription model, in **Settings…** (`⌘,` from the menu).
 - **History…** lists every session: play the audio, open the transcript, copy `/notes <id>`, or transcribe one you quit mid-recording.

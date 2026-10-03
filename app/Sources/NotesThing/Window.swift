@@ -312,6 +312,7 @@ struct SettingsView: View {
 /// Hex's MicrophoneSelectionSectionView.
 private struct MicrophoneSection: View {
   @AppStorage("microphone") private var selected = "" // "" is the system default
+  @AppStorage("systemAudio") private var systemAudio = true
   @State private var devices = Recorder.devices()
 
   private var missing: Bool { !selected.isEmpty && !devices.contains { $0.uniqueID == selected } }
@@ -336,10 +337,19 @@ private struct MicrophoneSection: View {
       if missing {
         Text("Selected device not connected. System default will be used.").font(.caption).foregroundStyle(.secondary)
       }
+      if Recorder.systemAudioSupported {
+        Label {
+          Toggle("Record System Audio", isOn: $systemAudio)
+          Text("Also records what your Mac plays, like the other side of a call, even with headphones on. macOS asks for permission the first time.")
+            .font(.caption).foregroundStyle(.secondary)
+        } icon: {
+          Image(systemName: "speaker.wave.2")
+        }
+      }
     } header: {
-      Text("Microphone Selection")
+      Text("Audio Input")
     } footer: {
-      Text("Record from a specific input device instead of the system default. Applies from the next session.")
+      Text("Record from a specific input device instead of the system default. Changes apply from the next session.")
         .font(.footnote).foregroundStyle(.secondary)
     }
   }
