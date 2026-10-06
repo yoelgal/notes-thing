@@ -200,7 +200,7 @@ final class NotePanel: NSPanel {
     contentView = NSHostingView(rootView: NoteField(session: session) { [weak self] in self?.orderOut(nil) })
     let screen = NSScreen.withMouse
     let size = NSSize(width: 460, height: 44)
-    setFrame(NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - 110, width: size.width, height: size.height),
+    setFrame(NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - 118, width: size.width, height: size.height),
              display: true)
     makeKeyAndOrderFront(nil)
     // SwiftUI drops focus requests made before the window is key, so focus the field once it is.
