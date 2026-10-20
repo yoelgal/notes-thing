@@ -159,6 +159,9 @@ final class Session {
         self.meter = r.level
       }
     }
+    if recorder?.systemAudioDropped == true {
+      alert("Your Mac's audio wouldn't record, so this session has the microphone only. Restarting your Mac usually fixes it.")
+    }
   }
 
   func pause() {
@@ -356,43 +359,23 @@ final class Recorder: @unchecked Sendable {
   private var converter: AVAudioConverter!
   private var paused = false
 
+  /// True if system audio was on but wouldn't record, so only the mic is.
+  private(set) var systemAudioDropped = false
+
   /// `failed` is called if recording ends on its own: the mic was unplugged.
   init(url: URL, failed: @escaping @MainActor (String) -> Void) throws {
     guard let mic = Self.device?.uniqueID else { throw Self.error("No microphone found.") }
-    var desc: [String: Any] = [
-      kAudioAggregateDeviceNameKey: "Notes Thing",
-      kAudioAggregateDeviceUIDKey: UUID().uuidString,
-      kAudioAggregateDeviceMainSubDeviceKey: mic,
-      kAudioAggregateDeviceIsPrivateKey: true,
-      kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: mic]],
-    ]
-    if Self.systemAudio, #available(macOS 14.2, *) {
-      // macOS asks for "System Audio Recording" the first time; if refused, the tap is silent and only the mic records.
-      let t = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
-      t.isPrivate = true
-      try Self.check(AudioHardwareCreateProcessTap(t, &tap), "Couldn't record system audio")
-      desc[kAudioAggregateDeviceTapListKey] = [[kAudioSubTapUIDKey: t.uuid.uuidString, kAudioSubTapDriftCompensationKey: true]]
-      desc[kAudioAggregateDeviceTapAutoStartKey] = true
-    }
-    do {
-      try Self.check(AudioHardwareCreateAggregateDevice(desc as CFDictionary, &aggregate), "Couldn't open the microphone")
-      var rate = Float64(0)
-      try Self.check(Self.get(aggregate, kAudioDevicePropertyNominalSampleRate, &rate), "Couldn't read the sample rate")
-      // PCM in CAF survives a crash (unlike m4a, which is unreadable until finalised).
-      let file = try AVAudioFile(forWriting: url, settings: [
-        AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: Live.rate, AVNumberOfChannelsKey: 1,
-        AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
-        AVLinearPCMIsNonInterleaved: false,
-      ], commonFormat: .pcmFormatFloat32, interleaved: false)
-      self.file = file
-      converter = AVAudioConverter(from: AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1)!, to: file.processingFormat)
-      try Self.check(AudioDeviceCreateIOProcIDWithBlock(&proc, aggregate, queue) { [unowned self] _, input, _, _, _ in
-        write(input)
-      }, "Couldn't open the microphone")
-      try Self.check(AudioDeviceStart(aggregate, proc), "Couldn't start the microphone")
-    } catch {
+    // The tap can wedge the aggregate device: it starts fine but never delivers audio, so the whole
+    // session would record silence. If nothing arrives, retry with the mic alone.
+    var ok = try open(url: url, mic: mic, systemAudio: Self.systemAudio)
+    if !ok, Self.systemAudio {
       stop()
-      throw error
+      ok = try open(url: url, mic: mic, systemAudio: false)
+      systemAudioDropped = ok
+    }
+    guard ok else {
+      stop()
+      throw Self.error("The microphone isn't sending any audio. Try another one in Settings, or restart your Mac.")
     }
     // Unplugging the mic stops the recording, as with any other input.
     var uid = mic as CFString
@@ -412,6 +395,49 @@ final class Recorder: @unchecked Sendable {
     self.unplugged = unplugged
     address = Self.address(kAudioDevicePropertyDeviceIsAlive)
     AudioObjectAddPropertyListenerBlock(micID, &address, queue, unplugged)
+  }
+
+  /// Builds the aggregate device and starts it. Returns false if no audio arrives within 2 seconds.
+  private func open(url: URL, mic: String, systemAudio: Bool) throws -> Bool {
+    var desc: [String: Any] = [
+      kAudioAggregateDeviceNameKey: "Notes Thing",
+      kAudioAggregateDeviceUIDKey: UUID().uuidString,
+      kAudioAggregateDeviceMainSubDeviceKey: mic,
+      kAudioAggregateDeviceIsPrivateKey: true,
+      kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: mic]],
+    ]
+    if systemAudio, #available(macOS 14.2, *) {
+      // macOS asks for "System Audio Recording" the first time; if refused, the tap is silent and only the mic records.
+      let t = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+      t.isPrivate = true
+      try Self.check(AudioHardwareCreateProcessTap(t, &tap), "Couldn't record system audio")
+      desc[kAudioAggregateDeviceTapListKey] = [[kAudioSubTapUIDKey: t.uuid.uuidString, kAudioSubTapDriftCompensationKey: true]]
+      desc[kAudioAggregateDeviceTapAutoStartKey] = true
+    }
+    do {
+      try Self.check(AudioHardwareCreateAggregateDevice(desc as CFDictionary, &aggregate), "Couldn't open the microphone")
+      var rate = Float64(0)
+      try Self.check(Self.get(aggregate, kAudioDevicePropertyNominalSampleRate, &rate), "Couldn't read the sample rate")
+      // PCM in CAF survives a crash (unlike m4a, which is unreadable until finalised).
+      let file = try AVAudioFile(forWriting: url, settings: [
+        AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: Live.rate, AVNumberOfChannelsKey: 1,
+        AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+        AVLinearPCMIsNonInterleaved: false,
+      ], commonFormat: .pcmFormatFloat32, interleaved: false)
+      self.file = file
+      converter = AVAudioConverter(from: AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1)!, to: file.processingFormat)
+      let started = DispatchSemaphore(value: 0)
+      var heard = false // only touched on `queue`
+      try Self.check(AudioDeviceCreateIOProcIDWithBlock(&proc, aggregate, queue) { [unowned self] _, input, _, _, _ in
+        if !heard { heard = true; started.signal() }
+        write(input)
+      }, "Couldn't open the microphone")
+      try Self.check(AudioDeviceStart(aggregate, proc), "Couldn't start the microphone")
+      return started.wait(timeout: .now() + 2) == .success
+    } catch {
+      stop()
+      throw error
+    }
   }
 
   func pause() { queue.async { self.paused = true } }
